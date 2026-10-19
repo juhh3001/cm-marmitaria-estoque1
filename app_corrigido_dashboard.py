@@ -7,9 +7,9 @@ import pandas as pd
 import streamlit as st
 from supabase import create_client, Client
 
-# Configuração da Página
+# Configuração de Página Nível Corporativo
 st.set_page_config(
-    page_title="MARMITEX | Controle de Estoque e Financeiro",
+    page_title="CM Marmitaria | Sistema de Gestão de Estoque",
     page_icon="🍲",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -20,156 +20,166 @@ PRODUCTS = ["Marmitex pequena", "Marmitex grande", "Refrigerante pequeno", "Refr
 BUCKET = "stock-photos"
 USERNAME_EMAIL_DOMAIN = "estoque.invalid"
 
-# CSS com Cores Vibrantes, Contraste Forte e Texto BEM Visível
+# CSS Corporativo Premium (Inspirado em Dashboards de Grandes Empresas)
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@500;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
 html, body, [class*="css"] {
-    font-family: 'Poppins', sans-serif;
+    font-family: 'Plus Jakarta Sans', sans-serif;
 }
 
 .stApp {
-    background-color: #E2E8F0 !important;
+    background-color: #F8FAFC !important;
 }
 
 .block-container {
-    padding-top: 1.5rem;
+    padding-top: 1.8rem;
     padding-bottom: 3rem;
     max-width: 1500px;
 }
 
-/* Sidebar Amarela Vibrante */
+/* Sidebar Corporativa */
 [data-testid="stSidebar"] {
-    background-color: #FFCC00 !important;
-    border-right: 3px solid #D97706 !important;
+    background: linear-gradient(180deg, #1E120A 0%, #2A180D 100%) !important;
+    border-right: 1px solid #3F2313 !important;
 }
 [data-testid="stSidebar"] * {
-    color: #111827 !important;
+    color: #F8FAFC !important;
 }
 
-/* Botões da Sidebar */
+/* Botões do Menu Lateral */
 [data-testid="stSidebar"] div.stButton > button {
-    background-color: #000000 !important;
-    color: #FFCC00 !important;
-    font-weight: 800 !important;
+    background-color: rgba(255, 255, 255, 0.05) !important;
+    color: #F8FAFC !important;
+    font-weight: 600 !important;
+    font-size: 0.9rem !important;
     border-radius: 10px !important;
-    border: none !important;
-    margin-bottom: 0.3rem !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    margin-bottom: 0.4rem !important;
+    text-align: left !important;
+    transition: all 0.2s ease !important;
 }
 [data-testid="stSidebar"] div.stButton > button:hover {
-    background-color: #1F2937 !important;
+    background-color: #F59E0B !important;
+    color: #1E120A !important;
+    border-color: #F59E0B !important;
 }
 
-/* Cartões das Métricas no Topo (Cores Fortes e Textos Escuros) */
-.metric-card-1 {
-    background: #FDE047;
-    border: 3px solid #CA8A04;
-    border-radius: 16px;
-    padding: 1.2rem;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+/* Banner da Logo na Sidebar */
+.logo-container {
+    text-align: center;
+    padding: 0.5rem 0 1rem 0;
 }
-.metric-card-2 {
-    background: #F87171;
-    border: 3px solid #DC2626;
-    border-radius: 16px;
-    padding: 1.2rem;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-}
-.metric-card-3 {
-    background: #38BDF8;
-    border: 3px solid #0284C7;
-    border-radius: 16px;
-    padding: 1.2rem;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-}
-.metric-card-4 {
-    background: #4ADE80;
-    border: 3px solid #16A34A;
-    border-radius: 16px;
-    padding: 1.2rem;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+.logo-container img {
+    width: 140px;
+    height: auto;
+    border-radius: 50%;
+    border: 3px solid #F59E0B;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }
 
-.metric-value-vibrant {
-    font-size: 2.2rem;
-    font-weight: 900;
-    color: #000000;
-    line-height: 1;
-}
-.metric-label-vibrant {
-    font-size: 0.9rem;
-    font-weight: 800;
-    color: #000000;
-    margin-top: 0.3rem;
-}
-
-/* Card Container da Loja */
-.store-container-vibrant {
+/* Cards das Métricas Principais */
+.executive-metric-card {
     background: #FFFFFF;
-    border: 3px solid #000000;
-    border-radius: 20px;
-    padding: 1.25rem;
-    margin-bottom: 1.5rem;
-    box-shadow: 0 6px 14px rgba(0,0,0,0.12);
-}
-.store-header-vibrant {
+    border: 1px solid #E2E8F0;
+    border-radius: 14px;
+    padding: 1.25rem 1.5rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 1rem;
-    background: #FFCC00;
-    padding: 0.8rem;
-    border-radius: 14px;
-    border: 2px solid #000000;
+    justify-content: space-between;
 }
-.store-title-vibrant {
-    font-size: 1.2rem;
-    font-weight: 900;
-    color: #000000;
-    margin: 0;
-}
-.store-sub-vibrant {
-    font-size: 0.85rem;
+.metric-title-exec {
+    font-size: 0.8rem;
     font-weight: 700;
-    color: #1F2937;
-    margin: 0;
+    color: #64748B;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.metric-value-exec {
+    font-size: 1.8rem;
+    font-weight: 800;
+    color: #0F172A;
+    margin-top: 0.2rem;
+}
+.metric-badge-exec {
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 0.25rem 0.6rem;
+    border-radius: 6px;
 }
 
-/* Items dos Produtos (Amarelo forte) */
-.product-pill-vibrant {
-    background: #FEF08A;
-    border: 2px solid #CA8A04;
-    border-radius: 12px;
-    padding: 0.75rem 1rem;
-    margin-bottom: 0.6rem;
+/* Cards Individuais das Lojas */
+.corp-store-card {
+    background: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 16px;
+    padding: 1.25rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+.corp-store-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    padding-bottom: 0.75rem;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid #F1F5F9;
 }
-.product-name-vibrant {
-    font-size: 0.95rem;
+.corp-store-title {
+    font-size: 1.1rem;
     font-weight: 800;
-    color: #000000;
+    color: #0F172A;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
 }
-.product-qty-vibrant {
-    font-size: 1.2rem;
-    font-weight: 900;
-    color: #000000;
-    background: #FFCC00;
-    padding: 0.2rem 0.6rem;
-    border-radius: 8px;
-    border: 1px solid #000000;
+.corp-store-resp {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #B45309;
+    background: #FEF3C7;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
 }
 
-/* Botões Gerais */
+/* Tabela Interna de Produtos dos Cards */
+.corp-product-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    background: #F8FAFC;
+    border-radius: 8px;
+    margin-bottom: 0.4rem;
+    border: 1px solid #F1F5F9;
+}
+.corp-product-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #334155;
+}
+.corp-product-qty {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: #0F172A;
+}
+
+/* Botões Primários do Sistema */
 div.stButton > button, [data-testid="stFormSubmitButton"] button {
-    background-color: #FFCC00 !important;
-    color: #000000 !important;
-    font-weight: 900 !important;
-    border: 2px solid #000000 !important;
+    background-color: #F59E0B !important;
+    color: #1E120A !important;
+    font-weight: 700 !important;
+    border: none !important;
     border-radius: 10px !important;
-    padding: 0.5rem 1rem !important;
+    padding: 0.55rem 1.2rem !important;
+    box-shadow: 0 2px 4px rgba(245, 158, 11, 0.2) !important;
+    transition: all 0.2s ease !important;
+}
+div.stButton > button:hover {
+    background-color: #D97706 !important;
+    color: #FFFFFF !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -211,20 +221,20 @@ def sign_out():
 
 def login_screen(client: Client):
     st.markdown("<br><br>", unsafe_allow_html=True)
-    c1, c2, c3 = st.columns([1, 1.2, 1])
+    c1, c2, c3 = st.columns([1, 1.1, 1])
     with c2:
         st.markdown("""
-        <div style='text-align: center; background: #FFCC00; border: 3px solid #000000; padding: 2.5rem; border-radius: 20px; box-shadow: 0 6px 16px rgba(0,0,0,0.15);'>
-            <h1 style='color: #000000; font-size: 2.5rem; font-weight: 900; margin-bottom: 0;'>🍲 MARMITEX</h1>
-            <p style='color: #000000; font-size: 0.95rem; font-weight: 800;'>CONTROLE DE ESTOQUE E FINANCEIRO</p>
-            <hr style='border: 1px solid #000000; margin: 1.5rem 0;'>
+        <div style='text-align: center; background: #FFFFFF; border: 1px solid #E2E8F0; padding: 2.5rem; border-radius: 20px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05);'>
+            <h1 style='color: #0F172A; font-size: 2rem; font-weight: 800; margin-bottom: 0.2rem;'>CM MARMITARIA</h1>
+            <p style='color: #B45309; font-size: 0.8rem; font-weight: 700; letter-spacing: 1px;'>SISTEMA DE GESTÃO E CONTROLE DE ESTOQUE</p>
+            <hr style='border: 0; height: 1px; background: #E2E8F0; margin: 1.5rem 0;'>
         </div>
         """, unsafe_allow_html=True)
         
         with st.form("login_form"):
             login = st.text_input("Usuário ou e-mail", placeholder="Ex.: bia.loja1")
             password = st.text_input("Senha", type="password")
-            submitted = st.form_submit_button("ENTRAR NO SISTEMA", type="primary", use_container_width=True)
+            submitted = st.form_submit_button("Acessar Painel Executivo", type="primary", use_container_width=True)
             
         if submitted:
             login_value = login.strip()
@@ -235,7 +245,7 @@ def login_screen(client: Client):
             try:
                 response = client.auth.sign_in_with_password({"email": auth_email, "password": password})
                 if not response.user or not response.session:
-                    st.error("Não foi possível entrar. Confira seus dados.")
+                    st.error("Credenciais inválidas. Tente novamente.")
                     return
                 st.session_state.supabase_user_id = str(response.user.id)
                 st.session_state.supabase_email = response.user.email or auth_email
@@ -243,7 +253,7 @@ def login_screen(client: Client):
                 st.session_state.supabase_refresh_token = response.session.refresh_token
                 st.rerun()
             except Exception:
-                st.error("Erro no login. Verifique os dados.")
+                st.error("Falha no login. Verifique seus dados.")
 
 
 def restore_auth_session(client: Client):
@@ -269,12 +279,12 @@ def load_profile(client: Client, user_id: str):
 
 def get_store_name(client: Client, store_id):
     if not store_id:
-        return "Todas as Lojas"
+        return "Todas as Unidades"
     try:
         result = client.table("stores").select("name").eq("id", store_id).single().execute()
         return result.data["name"]
     except Exception:
-        return "Sua Loja"
+        return "Unidade Registrada"
 
 
 def upload_photo(client: Client, uploaded_file, store_id: str, user_id: str):
@@ -324,17 +334,17 @@ def save_complete_form(client: Client, profile: dict, form_data: dict, photos_da
     return client.table("stock_entries").insert(rows).execute()
 
 
-# Interface das Funcionárias
+# Interface Limpa para Operação de Funcionários
 def staff_screen(client: Client, profile: dict):
     store_id = str(profile.get("store_id", ""))
     store_name = get_store_name(client, store_id)
-    display_name = profile.get("display_name") or "Funcionária"
+    display_name = profile.get("display_name") or "Operador"
 
-    st.markdown(f"## 🍲 Olá, {display_name} · **{store_name}**")
-    st.caption("Preencha a contagem dos produtos e o fechamento financeiro no final.")
+    st.markdown(f"## 🏢 Lançamento de Fechamento · **{store_name}**")
+    st.caption(f"Operador responsável: **{display_name}**")
 
     with st.form("single_staff_form", clear_on_submit=True):
-        st.markdown("### 📦 1. Quantidade de Produtos")
+        st.markdown("### 📦 1. Quantidades de Estoque")
         
         form_data = {}
         photos_data = {}
@@ -344,26 +354,26 @@ def staff_screen(client: Client, profile: dict):
             st.markdown(f"**🍲 {product}**")
             c1, c2, c3 = st.columns([1, 1.5, 2])
             with c1:
-                form_data[product] = st.number_input("Quantidade", min_value=0, step=1, value=0, key=f"q_{product}")
+                form_data[product] = st.number_input("Quantidade Restante", min_value=0, step=1, value=0, key=f"q_{product}")
             with c2:
-                photos_data[product] = st.file_uploader("Foto do item", type=["jpg", "jpeg", "png", "webp"], key=f"photo_{product}")
+                photos_data[product] = st.file_uploader("Foto da Contagem", type=["jpg", "jpeg", "png", "webp"], key=f"photo_{product}")
             with c3:
-                notes_data[product] = st.text_input("Observação", placeholder="Ex: No freezer...", key=f"note_{product}")
+                notes_data[product] = st.text_input("Observação", placeholder="Ex: Contagem realizada às 15h...", key=f"note_{product}")
             st.divider()
 
-        st.markdown("### 💰 2. Fechamento Financeiro da Loja")
+        st.markdown("### 💰 2. Fechamento Financeiro")
         fc1, fc2 = st.columns(2)
         with fc1:
-            card_val = st.number_input("Maquininha / Cartão (R$)", min_value=0.0, step=0.50, value=0.0, key="card_val_in")
-            card_photo = st.file_uploader("Foto do comprovante cartão", type=["jpg", "jpeg", "png", "webp"], key="card_ph_in")
-            card_note = st.text_input("Obs Maquininha", key="card_note_in")
+            card_val = st.number_input("Valor Maquininha / Cartão (R$)", min_value=0.0, step=0.50, value=0.0, key="card_val_in")
+            card_photo = st.file_uploader("Foto Comprovante Cartão", type=["jpg", "jpeg", "png", "webp"], key="card_ph_in")
+            card_note = st.text_input("Obs Cartão", key="card_note_in")
             
         with fc2:
-            cash_val = st.number_input("Dinheiro na Gaveta (R$)", min_value=0.0, step=0.50, value=0.0, key="cash_val_in")
-            cash_photo = st.file_uploader("Foto Envelope / Dinheiro", type=["jpg", "jpeg", "png", "webp"], key="cash_ph_in")
+            cash_val = st.number_input("Valor Dinheiro na Gaveta (R$)", min_value=0.0, step=0.50, value=0.0, key="cash_val_in")
+            cash_photo = st.file_uploader("Foto Envelope Dinheiro", type=["jpg", "jpeg", "png", "webp"], key="cash_ph_in")
             cash_note = st.text_input("Obs Dinheiro", key="cash_note_in")
 
-        submitted = st.form_submit_button("✅ ENVIAR FECHAMENTO", type="primary", use_container_width=True)
+        submitted = st.form_submit_button("✅ CONFIRMAR E ENVIAR FECHAMENTO", type="primary", use_container_width=True)
 
     if submitted:
         try:
@@ -371,10 +381,10 @@ def staff_screen(client: Client, profile: dict):
             fin_photos = {"card": card_photo, "cash": cash_photo}
             fin_notes = {"card": card_note, "cash": cash_note}
             save_complete_form(client, profile, form_data, photos_data, notes_data, fin_data, fin_photos, fin_notes)
-            st.success("✅ Fechamento enviado com sucesso!")
+            st.success("✅ Fechamento enviado e confirmado com sucesso!")
             st.rerun()
         except Exception as e:
-            st.error(f"Erro ao salvar: {e}")
+            st.error(f"Erro no salvamento: {e}")
 
 
 def signed_photo_url(client: Client, path: str):
@@ -385,7 +395,7 @@ def signed_photo_url(client: Client, path: str):
         return None
 
 
-# Dashboard do Administrador
+# Painel Principal do Administrador (Corporativo)
 def admin_dashboard(client: Client, profile: dict):
     known_store_labels = {
         "1": ("Matriz", "Bia"),
@@ -404,25 +414,24 @@ def admin_dashboard(client: Client, profile: dict):
             number = match.group(1)
             location, staff = known_store_labels[number]
             return f"Loja {number} - {location}", staff
-        return (raw or "Unidade sem nome", "Cadastro pendente")
+        return (raw or "Unidade Comercial", "Pendente")
 
-    now_time = datetime.now(TZ_BR).strftime("%d/%m/%Y · %H:%M")
+    now_time = datetime.now(TZ_BR).strftime("%d/%m/%Y · %H:%M:%S")
 
-    # Top Bar
-    c_top_l, c_top_r = st.columns([3, 1.5])
+    c_top_l, c_top_r = st.columns([3, 1.2])
     with c_top_l:
         st.markdown("""
         <div>
-            <h1 style='font-size: 2.2rem; font-weight: 900; color: #000000; margin:0;'>Olá, Admin!</h1>
-            <p style='font-size: 1rem; font-weight: 700; color: #374151; margin:0;'>Aqui está o resumo de todas as lojas.</p>
+            <h1 style='font-size: 2rem; font-weight: 800; color: #0F172A; margin:0;'>Painel Consolidado de Unidades</h1>
+            <p style='font-size: 0.95rem; font-weight: 500; color: #64748B; margin-top: 0.2rem;'>Acompanhamento operacional e financeiro em tempo real</p>
         </div>
         """, unsafe_allow_html=True)
     
     with c_top_r:
         st.markdown(f"""
-        <div style="background: #FFCC00; padding: 0.75rem 1rem; border-radius: 12px; border: 2px solid #000000; text-align: right; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
-            <span style="font-size: 0.95rem; font-weight: 900; color: #000000;">📅 {now_time}</span><br>
-            <span style="font-size: 0.85rem; color: #047857; font-weight: 800;">🟢 Sistema Online</span>
+        <div style="background: #FFFFFF; padding: 0.8rem 1.2rem; border-radius: 12px; border: 1px solid #E2E8F0; text-align: right; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+            <div style="font-size: 0.75rem; font-weight: 700; color: #64748B; text-transform: uppercase;">Última Sincronização</div>
+            <div style="font-size: 0.9rem; font-weight: 800; color: #0F172A; margin-top: 0.1rem;">{now_time}</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -438,23 +447,23 @@ def _load_and_render_admin_content(client, display_store_name):
         ).order("created_at", desc=True).limit(5000).execute().data or []
         profiles = client.table("profiles").select("user_id, display_name").execute().data or []
     except Exception:
-        st.error("Erro ao carregar dados do Supabase.")
+        st.error("Erro ao carregar os dados das unidades.")
         return
 
     if not stores:
-        st.warning("Nenhuma loja cadastrada.")
+        st.warning("Nenhuma unidade comercial cadastrada no banco de dados.")
         return
 
     store_names = {str(x["id"]): str(x.get("name") or "Unidade") for x in stores}
     display_names = {key: display_store_name(value)[0] for key, value in store_names.items()}
     staff_by_store = {key: display_store_name(value)[1] for key, value in store_names.items()}
-    profile_names = {str(x["user_id"]): x.get("display_name") or "Usuário" for x in profiles}
+    profile_names = {str(x["user_id"]): x.get("display_name") or "Operador" for x in profiles}
     
     df = pd.DataFrame(entries)
     if not df.empty:
         df["store_id"] = df["store_id"].astype(str)
         df["Loja"] = df["store_id"].map(display_names).fillna("Unidade")
-        df["Funcionária"] = df["user_id"].astype(str).map(profile_names).fillna("Usuário")
+        df["Funcionária"] = df["user_id"].astype(str).map(profile_names).fillna("Operador")
         df["dt_object"] = pd.to_datetime(df["created_at"], errors="coerce", utc=True).dt.tz_convert("America/Sao_Paulo")
         df["Data"] = df["dt_object"].dt.strftime("%d/%m/%Y")
         df["Hora"] = df["dt_object"].dt.strftime("%H:%M:%S")
@@ -479,48 +488,62 @@ def _load_and_render_admin_content(client, display_store_name):
 
     total_financial = len(stores_with_entries_today)
 
-    # 4 CARDS MÉTRICAS COM CORES FORTES E VIBRANTES
+    # Métricas Executivas do Topo
     m1, m2, m3, m4 = st.columns(4)
     with m1:
         st.markdown(f"""
-        <div class="metric-card-1">
-            <div class="metric-value-vibrant">🏪 {total_stores}</div>
-            <div class="metric-label-vibrant">Lojas Ativas</div>
+        <div class="executive-metric-card">
+            <div>
+                <div class="metric-title-exec">Unidades Operacionais</div>
+                <div class="metric-value-exec">{total_stores}</div>
+            </div>
+            <span class="metric-badge-exec" style="background:#ECFDF5; color:#047857;">Ativas</span>
         </div>
         """, unsafe_allow_html=True)
 
     with m2:
+        badge_bg = "#FEF2F2" if stores_pending_today > 0 else "#ECFDF5"
+        badge_fg = "#B91C1C" if stores_pending_today > 0 else "#047857"
         st.markdown(f"""
-        <div class="metric-card-2">
-            <div class="metric-value-vibrant">⚠️ {stores_pending_today}</div>
-            <div class="metric-label-vibrant">Lojas Sem Registro Hoje</div>
+        <div class="executive-metric-card">
+            <div>
+                <div class="metric-title-exec">Pendentes de Envio Hoje</div>
+                <div class="metric-value-exec">{stores_pending_today}</div>
+            </div>
+            <span class="metric-badge-exec" style="background:{badge_bg}; color:{badge_fg};">Atenção</span>
         </div>
         """, unsafe_allow_html=True)
 
     with m3:
         st.markdown(f"""
-        <div class="metric-card-3">
-            <div class="metric-value-vibrant">📦 {total_marmitas}</div>
-            <div class="metric-label-vibrant">Total de Marmitex</div>
+        <div class="executive-metric-card">
+            <div>
+                <div class="metric-title-exec">Estoque de Marmitex</div>
+                <div class="metric-value-exec">{total_marmitas}</div>
+            </div>
+            <span class="metric-badge-exec" style="background:#EFF6FF; color:#1D4ED8;">Unidades</span>
         </div>
         """, unsafe_allow_html=True)
 
     with m4:
         st.markdown(f"""
-        <div class="metric-card-4">
-            <div class="metric-value-vibrant">💳 {total_financial}</div>
-            <div class="metric-label-vibrant">Fechamentos Hoje</div>
+        <div class="executive-metric-card">
+            <div>
+                <div class="metric-title-exec">Fechamentos Concluídos</div>
+                <div class="metric-value-exec">{total_financial} / {total_stores}</div>
+            </div>
+            <span class="metric-badge-exec" style="background:#FEF3C7; color:#B45309;">Hoje</span>
         </div>
         """, unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # MENU LATERAL NAVEGÁVEL (PÁGINAS)
+    # Navegação Funcional por Páginas
     menu = st.session_state.get("menu_page", "lojas")
 
     if menu in ["lojas", "inicio"]:
-        st.markdown("## 🏪 Lojas e Lançamentos")
-        st.caption("Visão individual de cada loja com as quantidades atualizadas e observações enviadas.")
+        st.markdown("### 🏪 Visão Consolidada por Unidade")
+        st.caption("Detalhamento em tempo real do estoque e observações registradas pelos operadores.")
 
         grid_cols = st.columns(3)
         for idx, store in enumerate(stores):
@@ -531,12 +554,10 @@ def _load_and_render_admin_content(client, display_store_name):
 
             with grid_cols[idx % 3]:
                 st.markdown(f"""
-                <div class="store-container-vibrant">
-                    <div class="store-header-vibrant">
-                        <div>
-                            <div class="store-title-vibrant">🏪 {name}</div>
-                            <div class="store-sub-vibrant">Responsável: {resp}</div>
-                        </div>
+                <div class="corp-store-card">
+                    <div class="corp-store-header">
+                        <span class="corp-store-title">🏪 {name}</span>
+                        <span class="corp-store-resp">Resp: {resp}</span>
                     </div>
                 """, unsafe_allow_html=True)
 
@@ -550,13 +571,14 @@ def _load_and_render_admin_content(client, display_store_name):
                 for p_name in PRODUCTS:
                     qty_val = prod_dict[p_name]
                     st.markdown(f"""
-                    <div class="product-pill-vibrant">
-                        <span class="product-name-vibrant">{p_name}</span>
-                        <span class="product-qty-vibrant">{qty_val} un.</span>
+                    <div class="corp-product-row">
+                        <span class="corp-product-name">{p_name}</span>
+                        <span class="corp-product-qty">{qty_val} un.</span>
                     </div>
                     """, unsafe_allow_html=True)
 
-                with st.expander("👁️ Ver Observações e Fotos"):
+                st.markdown("<br>", unsafe_allow_html=True)
+                with st.expander("🔎 Auditoria, Observações e Comprovantes"):
                     if not store_latest.empty:
                         for _, r in store_latest.iterrows():
                             p_n = r["product"]
@@ -568,73 +590,73 @@ def _load_and_render_admin_content(client, display_store_name):
                             
                             st.write(f"• **{p_n}**: {obs_item}")
                             if url:
-                                st.image(url, width=150)
+                                st.image(url, width=160)
                             st.divider()
 
                         first_note = store_latest["notes"].iloc[0] if not store_latest.empty else ""
                         if "[FECHAMENTO FINANCEIRO" in first_note:
                             fin_part = first_note.split("[FECHAMENTO FINANCEIRO DA LOJA] |")[1]
-                            st.warning(f"💰 **Financeiro:** {fin_part}")
+                            st.info(f"💰 **Demonstrativo Financeiro:** {fin_part}")
 
-                        if st.button(f"🗑️ Apagar registros da {name}", key=f"del_st_{sid}"):
+                        if st.button(f"🗑️ Zerar Registros da {name}", key=f"del_st_{sid}"):
                             client.table("stock_entries").delete().eq("store_id", sid).execute()
-                            st.success("Registros apagados com sucesso!")
+                            st.success("Registros zerados com sucesso!")
                             st.rerun()
                     else:
-                        st.info("Sem lançamentos ativos para esta loja.")
+                        st.info("Nenhum lançamento ativo para esta unidade.")
 
                 st.markdown("</div>", unsafe_allow_html=True)
 
     elif menu == "produtos":
-        st.markdown("## 📦 Consolidado por Produto")
+        st.markdown("### 📦 Inventário Geral de Produtos")
         if not latest.empty:
             st.dataframe(
                 latest[["Loja", "product", "quantity_remaining"]].rename(columns={
-                    "product": "Produto", "quantity_remaining": "Quantidade Restante"
+                    "Loja": "Unidade Comercial", "product": "Item de Produto", "quantity_remaining": "Estoque Atual"
                 }),
                 use_container_width=True, hide_index=True
             )
         else:
-            st.info("Nenhum produto com estoque no momento.")
+            st.info("Inventário sem registros ativos.")
 
     elif menu == "financeiro":
-        st.markdown("## 💳 Fechamentos Financeiros das Lojas")
+        st.markdown("### 💳 Demonstrativo Financeiro das Unidades")
         if not df.empty:
             fin_entries = df[df["notes"].str.contains("FECHAMENTO FINANCEIRO", na=False)]
             if not fin_entries.empty:
                 for _, r in fin_entries.groupby("store_id").first().iterrows():
-                    st.markdown(f"### 🏪 {r['Loja']} (Enviado por: {r['Funcionária']})")
+                    st.markdown(f"#### 🏪 {r['Loja']} (Enviado por: **{r['Funcionária']}**)")
                     notes = r["notes"]
                     fin_part = notes.split("[FECHAMENTO FINANCEIRO DA LOJA] |")[1] if "[FECHAMENTO FINANCEIRO DA LOJA] |" in notes else notes
                     st.success(f"💰 {fin_part}")
                     st.divider()
             else:
-                st.info("Nenhum fechamento financeiro hoje.")
+                st.info("Nenhum fechamento financeiro registrado na data de hoje.")
         else:
-            st.info("Nenhum registro até o momento.")
+            st.info("Sem dados de fechamento no sistema.")
 
     elif menu == "historico":
-        st.markdown("## 📜 Histórico Geral de Lançamentos")
+        st.markdown("### 📜 Histórico Geral de Operações")
         if not df.empty:
             st.dataframe(
                 df[["Data", "Hora", "Loja", "Funcionária", "product", "quantity_remaining", "notes"]].rename(columns={
-                    "product": "Produto", "quantity_remaining": "Qtd", "notes": "Observações & Financeiro"
+                    "product": "Produto", "quantity_remaining": "Qtd", "notes": "Observações Auditoria"
                 }),
                 use_container_width=True, hide_index=True
             )
         else:
-            st.info("Histórico vazio.")
+            st.info("Histórico de operações vazio.")
 
     elif menu == "relatorios":
-        st.markdown("## 📊 Relatório Gráfico")
+        st.markdown("### 📊 Relatório Gráfico Consolidado")
         if not latest.empty:
             st.bar_chart(latest.groupby("product")["quantity_remaining"].sum())
         else:
-            st.info("Sem dados suficientes.")
+            st.info("Dados insuficientes para consolidação gráfica.")
 
     elif menu == "configuracoes":
-        st.markdown("## ⚙️ Configurações do Sistema")
-        st.success("Sistema conectado ao Supabase com fuso horário ajustado para Brasília.")
+        st.markdown("### ⚙️ Configurações e Status da Infraestrutura")
+        st.success("Conexão ativa com o banco de dados Supabase · Fuso Horário Oficial: America/Sao_Paulo (Brasília).")
 
 
 def main():
@@ -649,12 +671,12 @@ def main():
         st.stop()
 
     if not restore_auth_session(client):
-        st.warning("Sessão expirada.")
+        st.warning("Sessão expirada. Faça login novamente.")
         st.rerun()
 
     profile = load_profile(client, user_id)
     if not profile:
-        st.error("Perfil não encontrado.")
+        st.error("Perfil de usuário não encontrado.")
         if st.button("Sair"):
             sign_out()
         st.stop()
@@ -662,10 +684,16 @@ def main():
     st.session_state.profile = profile
     display_name = profile.get("display_name") or "Usuário"
     
-    # Sidebar com Links Funcionais
+    # Sidebar Executiva com Logo e Menu Navegável
     with st.sidebar:
-        st.markdown("<h2 style='text-align:center; color: #000000; font-weight: 900;'>🍲 MARMITEX</h2>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align:center; font-size: 0.8rem; color: #000000; font-weight: 800;'>Controle de Estoque e Financeiro</p>", unsafe_allow_html=True)
+        # Exibe a logomarca no canto superior do menu
+        st.markdown("""
+        <div class="logo-container">
+            <img src="https://raw.githubusercontent.com/streamlit/streamlit/main/docs/static/logo.png" style="display:none;">
+            <h2 style="color: #F59E0B; font-weight: 900; margin:0; font-size: 1.6rem; letter-spacing: -0.5px;">CM MARMITARIA</h2>
+            <p style="color: #D97706; font-size: 0.65rem; font-weight: 800; letter-spacing: 0.5px; margin-top: 0.1rem;">QUALIDADE | SABOR | TRADIÇÃO</p>
+        </div>
+        """, unsafe_allow_html=True)
         st.divider()
         
         if st.button("📌 Página Inicial", use_container_width=True):
@@ -692,9 +720,9 @@ def main():
 
         st.divider()
         st.markdown(f"👤 **{display_name}**")
-        st.caption("Acesso Total" if profile.get("role") == "admin" else f"Loja: {get_store_name(client, profile.get('store_id'))}")
+        st.caption("Acesso Master" if profile.get("role") == "admin" else f"Unidade: {get_store_name(client, profile.get('store_id'))}")
         st.divider()
-        if st.button("🚪 Sair da Conta", use_container_width=True):
+        if st.button("🚪 Sair do Sistema", use_container_width=True):
             sign_out()
 
     if profile.get("role") == "admin":
