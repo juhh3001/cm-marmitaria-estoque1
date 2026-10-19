@@ -235,9 +235,6 @@ def save_complete_form(client: Client, profile: dict, form_data: dict, photos_da
     store_id = str(profile["store_id"])
     created_at = datetime.now(timezone.utc).isoformat()
     
-    card_ph_path = upload_photo(client, fin_photos.get("card"), store_id, user_id)
-    cash_ph_path = upload_photo(client, fin_photos.get("cash"), store_id, user_id)
-    
     rows = []
     for product in PRODUCTS:
         qty = int(form_data.get(product, 0))
@@ -278,7 +275,8 @@ def staff_screen(client: Client, profile: dict):
     </style>
     """, unsafe_allow_html=True)
 
-    store_name = get_store_name(client, profile.get("store_id"))
+    store_id = str(profile.get("store_id", ""))
+    store_name = get_store_name(client, store_id)
     display_name = profile.get("display_name") or "Funcionária"
 
     st.markdown(f"""
@@ -288,6 +286,41 @@ def staff_screen(client: Client, profile: dict):
         <p>Preencha abaixo o formulário completo de fechamento e estoque de hoje.</p>
     </div>
     """, unsafe_allow_html=True)
+
+    # BOTÃO POP-OVER PARA HISTÓRICO SIMPLES DA FUNCIONÁRIA
+    c_hist_top, _ = st.columns([2, 1])
+    with c_hist_top:
+        with st.popover("📜 Ver Meu Histórico de Hoje (Lançamentos Enviados)"):
+            st.markdown("### 📜 Meus Lançamentos de Hoje")
+            try:
+                today_start = datetime.now(TZ_BR).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc).isoformat()
+                user_entries = client.table("stock_entries").select(
+                    "product, quantity_remaining, notes, created_at"
+                ).eq("store_id", store_id).gte("created_at", today_start).order("created_at", desc=True).execute().data or []
+                
+                if user_entries:
+                    # Agrupa os lançamentos por horário de envio
+                    df_u = pd.DataFrame(user_entries)
+                    df_u["dt"] = pd.to_datetime(df_u["created_at"], errors="coerce", utc=True).dt.tz_convert("America/Sao_Paulo")
+                    df_u["Horário"] = df_u["dt"].dt.strftime("%H:%M:%S")
+                    
+                    grouped = df_u.groupby("Horário")
+                    for hr, group in grouped:
+                        st.markdown(f"🕒 **Lançamento das {hr}**")
+                        for _, r in group.iterrows():
+                            st.write(f"• **{r['product']}**: {r['quantity_remaining']} un.")
+                        
+                        first_note = group["notes"].iloc[0] if not group.empty else ""
+                        if "Maquininha:" in first_note:
+                            fin_part = first_note.split("Obs Produto:")[1] if "Obs Produto:" in first_note else first_note
+                            st.caption(f"💰 {fin_part}")
+                        st.divider()
+                else:
+                    st.info("Nenhum lançamento registrado hoje ainda.")
+            except Exception as e:
+                st.error("Não foi possível carregar seu histórico recente.")
+
+    st.markdown("<br>", unsafe_allow_html=True)
 
     if st.session_state.get("show_success_confirm"):
         st.success("✅ SEU FECHAMENTO FOI CONFIRMADO E SALVO COM SUCESSO! A tela foi limpa para novos lançamentos.")
@@ -356,7 +389,7 @@ def signed_photo_url(client: Client, path: str):
         return None
 
 
-# Painel do Administrador (Com Fuso Horário de Brasília Fixo e Cards de Gerenciamento)
+# Painel do Administrador
 def admin_dashboard(client: Client, profile: dict):
     known_store_labels = {
         "5": ("Leme", "Kauany"),
@@ -452,7 +485,6 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
         df["Loja"] = df["store_id"].map(display_names).fillna("Unidade")
         df["Funcionária"] = df["user_id"].astype(str).map(profile_names).fillna("Usuário")
         
-        # Conversão de fuso horário corrigida para Brasília
         df["dt_object"] = pd.to_datetime(df["created_at"], errors="coerce", utc=True).dt.tz_convert("America/Sao_Paulo")
         df["Data"] = df["dt_object"].dt.strftime("%d/%m/%Y")
         df["Hora e Minuto"] = df["dt_object"].dt.strftime("%H:%M:%S")
@@ -502,7 +534,6 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                 </div>
                 """, unsafe_allow_html=True)
 
-    # ABA GERENCIAR POR LOJA (TODAS EM CARDS VISÍVEIS SIMULTANEAMENTE)
     with tab_stores:
         st.markdown("### 🏪 Gerenciamento por Cards de Lojas")
         st.caption("Visão simultânea de todas as unidades com fotos, observações e controle de exclusão.")
@@ -522,163 +553,4 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                         st.warning("Confirma a exclusão de todos os registros desta loja?")
                         if st.button("Confirmar Apagar Tudo", key=f"del_card_store_{sid}"):
                             try:
-                                client.table("stock_entries").delete().eq("store_id", sid).execute()
-                                st.success("Registros da loja apagados!")
-                                st.rerun()
-                            except Exception:
-                                st.error("Erro ao apagar.")
-
-                if not store_latest.empty:
-                    for _, row in store_latest.iterrows():
-                        c1, c2, c3, c4 = st.columns([3, 1.2, 1.2, 1])
-                        
-                        p_name = row["product"]
-                        qty = int(row["quantity_remaining"])
-                        notes = row.get("notes") or "Sem observação"
-                        
-                        c1.markdown(f"• **{p_name}**: <small>{notes}</small>", unsafe_allow_html=True)
-                        c2.markdown(f"**{qty} un.**")
-
-                        path = row.get("photo_path")
-                        url = signed_photo_url(client, path) if isinstance(path, str) and path.strip() else None
-                        if url:
-                            with c3.popover("📷 Ver Foto"):
-                                st.image(url, use_container_width=True)
-                        else:
-                            c3.caption("Sem foto")
-
-                        row_id = row.get("id")
-                        if c4.button("🗑️ Apagar", key=f"del_card_item_{row_id}"):
-                            try:
-                                client.table("stock_entries").delete().eq("id", row_id).execute()
-                                st.success("Item apagado!")
-                                st.rerun()
-                            except Exception:
-                                st.error("Erro ao apagar item.")
-                        st.divider()
-                else:
-                    st.info("Nenhum registro ativo para esta unidade.")
-
-    with tab_carteirinhas:
-        st.markdown("### 🏷️ Carteirinhas de Estoque Completo de Todas as Lojas")
-        for store in stores:
-            sid = str(store["id"])
-            name = display_names[sid]
-            resp = staff_by_store[sid]
-            store_latest = latest[latest["store_id"] == sid] if not latest.empty else pd.DataFrame()
-            
-            prod_qtys = {p: 0 for p in PRODUCTS}
-            if not store_latest.empty:
-                for _, r in store_latest.iterrows():
-                    prod_name = r["product"]
-                    if prod_name in prod_qtys:
-                        prod_qtys[prod_name] = int(r["quantity_remaining"])
-
-            st.markdown(f"""
-            <div class="store-box">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                    <strong style="color: #2A1200; font-size: 1.2rem;">🏪 {name}</strong>
-                    <span style="color: #64748B; font-size: 0.85rem;">Responsável: <strong>{resp}</strong></span>
-                </div>
-                <hr style="border: 1px solid #FFE082; margin: 0.5rem 0;">
-                <div style="display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 0.5rem;">
-                    <div>🍲 Pequena: <strong>{prod_qtys['Marmitex pequena']} un.</strong></div>
-                    <div>🍲 Grande: <strong>{prod_qtys['Marmitex grande']} un.</strong></div>
-                    <div>🥤 Refri Peq: <strong>{prod_qtys['Refrigerantes Peq']} un.</strong></div>
-                    <div>🍮 Pudim: <strong>{prod_qtys['Pudim']} un.</strong></div>
-                    <div>🥤 Lata: <strong>{prod_qtys['Refrigerante lata']} un.</strong></div>
-                    <div>💧 Água: <strong>{prod_qtys['Água']} un.</strong></div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-
-    with tab_history:
-        st.markdown("### 📜 Histórico Geral e Planilha")
-        if not df.empty:
-            f_col1, f_col2 = st.columns([2, 2])
-            with f_col1:
-                store_filter_options = ["Todas as Lojas"] + list(display_names.values())
-                selected_store_filter = st.selectbox("Filtrar por Loja", store_filter_options)
-            with f_col2:
-                today_br = datetime.now(TZ_BR).date()
-                date_range = st.date_input("Filtrar por Período", value=[today_br, today_br])
-            
-            filtered_df = df.copy()
-            if selected_store_filter != "Todas as Lojas":
-                filtered_df = filtered_df[filtered_df["Loja"] == selected_store_filter]
-            if isinstance(date_range, (list, tuple)) and len(date_range) == 2:
-                start_date, end_date = date_range
-                filtered_df = filtered_df[
-                    (filtered_df["dt_object"].dt.date >= start_date) & 
-                    (filtered_df["dt_object"].dt.date <= end_date)
-                ]
-
-            st.markdown("<br>", unsafe_allow_html=True)
-            display_cols = ["Data", "Hora e Minuto", "Loja", "Funcionária", "product", "quantity_remaining", "notes"]
-            renamed_df = filtered_df[display_cols].rename(columns={
-                "product": "Produto",
-                "quantity_remaining": "Quantidade Restante",
-                "notes": "Observações & Financeiro"
-            })
-            st.dataframe(renamed_df, use_container_width=True, hide_index=True)
-            
-            today_str = datetime.now(TZ_BR).strftime('%d_%m_%Y')
-            csv_data = renamed_df.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                label="📥 Baixar Planilha (CSV)",
-                data=csv_data,
-                file_name=f"historico_cm_marmitaria_{today_str}.csv",
-                mime="text/csv"
-            )
-        else:
-            st.info("Nenhum lançamento registrado no momento.")
-
-    with tab_reports:
-        st.markdown("### Visão por Produto")
-        if not latest.empty:
-            st.bar_chart(latest.groupby("product")["quantity_remaining"].sum())
-
-
-def main():
-    client = get_client()
-    if client is None:
-        st.error("Erro na conexão com o Supabase.")
-        st.stop()
-
-    user_id = st.session_state.get("supabase_user_id")
-    if not user_id:
-        login_screen(client)
-        st.stop()
-
-    if not restore_auth_session(client):
-        st.warning("Sessão expirada.")
-        st.rerun()
-
-    profile = load_profile(client, user_id)
-    if not profile:
-        st.error("Perfil de acesso não encontrado no Supabase.")
-        if st.button("Sair"):
-            sign_out()
-        st.stop()
-
-    st.session_state.profile = profile
-    display_name = profile.get("display_name") or "Usuário"
-    
-    with st.sidebar:
-        st.markdown("<h2 style='text-align:center; color: #2A1200; margin-bottom: 0;'>🏠 CM MARMITARIA</h2>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align:center; font-size: 0.75rem; color: #4A2300; font-weight: 700;'>QUALIDADE | SABOR | TRADIÇÃO</p>", unsafe_allow_html=True)
-        st.divider()
-        st.markdown(f"👤 **{display_name}**")
-        st.caption("Acesso: Administrador" if profile.get("role") == "admin" else f"Loja: {get_store_name(client, profile.get('store_id'))}")
-        st.divider()
-        if st.button("🚪 Sair da Conta", use_container_width=True):
-            sign_out()
-
-    if profile.get("role") == "admin":
-        admin_dashboard(client, profile)
-    elif profile.get("role") == "staff" and profile.get("store_id"):
-        staff_screen(client, profile)
-
-
-if __name__ == "__main__":
-    main()
+                                client.table
