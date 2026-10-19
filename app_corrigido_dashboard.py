@@ -17,13 +17,12 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Fuso horário oficial de Brasília
 TZ_BR = zoneinfo.ZoneInfo("America/Sao_Paulo")
 PRODUCTS = ["Marmitex pequena", "Marmitex grande", "Refrigerantes Peq", "Pudim", "Refrigerante lata", "Água"]
 BUCKET = "stock-photos"
 USERNAME_EMAIL_DOMAIN = "estoque.invalid"
 
-# Estilização CSS Preservada
+# Estilização CSS com Bloquinhos de Bordas Arredondadas e Faixinha Colorida
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap');
@@ -79,6 +78,46 @@ html, body, [class*="css"] {
     margin-bottom: 1.5rem;
     color: #2A1200;
     font-weight: 600;
+}
+
+/* Bloquinho de Acompanhamento (Design Quadrado Arredondado com Faixinha Topo) */
+.acomp-card {
+    background: #FFFFFF;
+    border: 2px solid #F472B6; /* Faixa/Borda Rosa Elegante */
+    border-radius: 16px;
+    overflow: hidden;
+    margin-bottom: 1.2rem;
+    box-shadow: 0 4px 12px rgba(244, 114, 182, 0.12);
+}
+.acomp-card-header {
+    background: linear-gradient(90deg, #F472B6 0%, #FB7185 100%);
+    color: #FFFFFF;
+    padding: 0.75rem 1.2rem;
+    font-weight: 800;
+    font-size: 1.1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.acomp-card-body {
+    padding: 1rem 1.2rem;
+}
+.acomp-card-resp {
+    font-size: 0.85rem;
+    color: #334155;
+    font-weight: 700;
+    margin-bottom: 0.6rem;
+}
+.acomp-card-marmitas {
+    display: flex;
+    gap: 1.2rem;
+    background: #FDF2F8;
+    border: 1px solid #FBCFE8;
+    padding: 0.6rem 0.9rem;
+    border-radius: 10px;
+    font-weight: 700;
+    color: #831843;
+    margin-bottom: 0.5rem;
 }
 
 /* Botões Gerais */
@@ -239,6 +278,7 @@ def upload_photo(client: Client, uploaded_file, store_id: str, user_id: str):
     return path
 
 
+# CORREÇÃO DO SALVAMENTO (APIError resolvido com tipos seguros)
 def save_form_data(client: Client, profile: dict, entry_type: str, form_data: dict, photos_data: dict, notes_data: dict, general_note: str, fin_data: dict = None, fin_photos: dict = None, fin_notes: dict = None):
     user_id = str(profile["user_id"])
     store_id = str(profile["store_id"])
@@ -248,7 +288,14 @@ def save_form_data(client: Client, profile: dict, entry_type: str, form_data: di
     
     for product in PRODUCTS:
         qty = int(form_data.get(product, 0))
-        p_path = upload_photo(client, photos_data.get(product), store_id, user_id) if photos_data and photos_data.get(product) else None
+        
+        # Garante tratamento de foto seguro (se não tiver foto, passa None limpo)
+        p_path = None
+        if photos_data and photos_data.get(product):
+            try:
+                p_path = upload_photo(client, photos_data.get(product), store_id, user_id)
+            except Exception:
+                p_path = None
         
         prod_obs = notes_data.get(product, "").strip() if notes_data else ""
         
@@ -260,7 +307,6 @@ def save_form_data(client: Client, profile: dict, entry_type: str, form_data: di
 
         clean_note = " | ".join(note_parts) if note_parts else ""
         
-        # Tag do tipo no nome do produto se for fechamento
         prod_name = f"FECHAMENTO - {product}" if entry_type == "fechamento" else product
         if entry_type == "abertura":
             prod_name = f"ABERTURA - {product}"
@@ -275,27 +321,36 @@ def save_form_data(client: Client, profile: dict, entry_type: str, form_data: di
             "created_at": created_at,
         })
         
+    # Adiciona as linhas financeiras de Fechamento sem corromper tipos no banco
     if entry_type == "fechamento" and fin_data:
-        card_ph_path = upload_photo(client, fin_photos.get("card"), store_id, user_id) if fin_photos and fin_photos.get("card") else None
+        card_ph_path = None
+        if fin_photos and fin_photos.get("card"):
+            try:
+                card_ph_path = upload_photo(client, fin_photos.get("card"), store_id, user_id)
+            except Exception:
+                card_ph_path = None
+                
         card_obs = fin_notes.get("card", "").strip() if fin_notes else ""
+        card_val_int = int(round(float(fin_data.get("card", 0.0))))
         rows.append({
             "store_id": store_id,
             "user_id": user_id,
             "product": "FECHAMENTO - Maquininha",
-            "quantity_remaining": float(fin_data.get("card", 0.0)),
+            "quantity_remaining": card_val_int,
             "photo_path": card_ph_path,
-            "notes": card_obs if card_obs else "",
+            "notes": f"Valor R$ {fin_data.get('card', 0.0):.2f} | {card_obs}".strip(" |"),
             "created_at": created_at,
         })
         
         cash_obs = fin_notes.get("cash", "").strip() if fin_notes else ""
+        cash_val_int = int(round(float(fin_data.get("cash", 0.0))))
         rows.append({
             "store_id": store_id,
             "user_id": user_id,
             "product": "FECHAMENTO - Dinheiro",
-            "quantity_remaining": float(fin_data.get("cash", 0.0)),
+            "quantity_remaining": cash_val_int,
             "photo_path": None,
-            "notes": cash_obs if cash_obs else "",
+            "notes": f"Valor R$ {fin_data.get('cash', 0.0):.2f} | {cash_obs}".strip(" |"),
             "created_at": created_at,
         })
 
@@ -467,7 +522,6 @@ def admin_dashboard(client: Client, profile: dict):
             return f"Loja {number} · {location}", staff
         return (raw or "Unidade sem nome", "Cadastro pendente")
 
-    # Horário atual de Brasília
     now_br = datetime.now(TZ_BR)
     last_time_formatted = now_br.strftime("%d/%m/%Y às %H:%M:%S")
 
@@ -549,7 +603,6 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
             sid = str(store["id"])
             s_name = display_names[sid]
             s_resp = staff_by_store[sid]
-            
             st_data = df_ab_today[df_ab_today["store_id"] == sid] if not df_ab_today.empty else pd.DataFrame()
             
             m_g = 0
@@ -579,7 +632,7 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                     else:
                         st.info("Nenhum registro de abertura para esta loja hoje.")
 
-    # 2. ABA DE ACOMPANHAMENTO DO DIA
+    # 2. ABA DE ACOMPANHAMENTO DO DIA (DESIGN EM BLOQUINHOS SOLICITADO)
     with tab_meio_dia:
         df_md_today = df[(~df["product"].str.contains("FECHAMENTO", na=False) & ~df["product"].str.contains("ABERTURA", na=False)) & (df["dt_object"].dt.date == today_date)] if not df.empty else pd.DataFrame()
         registered_stores_md = set(df_md_today["store_id"].unique()) if not df_md_today.empty else set()
@@ -600,7 +653,6 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
             sid = str(store["id"])
             s_name = display_names[sid]
             s_resp = staff_by_store[sid]
-            
             st_data = df_md_today[df_md_today["store_id"] == sid] if not df_md_today.empty else pd.DataFrame()
             
             m_g = 0
@@ -617,7 +669,24 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                     m_p = int(mp_row.iloc[0]["quantity_remaining"])
 
             with cols[idx % 2]:
-                with st.expander(f"🏪 {s_name} | Resp: {s_resp} | 🍲 Grande: {m_g} un. | Pequena: {m_p} un. (Último às {time_txt})", expanded=False):
+                # Bloquinho de Design com Faixinha Rosa
+                st.markdown(f"""
+                <div class="acomp-card">
+                    <div class="acomp-card-header">
+                        <span>🏪 {s_name}</span>
+                        <span style="font-size: 0.8rem; background: rgba(255,255,255,0.25); padding: 0.2rem 0.6rem; border-radius: 6px;">🕒 {time_txt}</span>
+                    </div>
+                    <div class="acomp-card-body">
+                        <div class="acomp-card-resp">👤 Responsável: <strong>{s_resp}</strong></div>
+                        <div class="acomp-card-marmitas">
+                            <div>🍲 Marmitas Pequenas: <strong>{m_p} un.</strong></div>
+                            <div>🍲 Marmitas Grandes: <strong>{m_g} un.</strong></div>
+                        </div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                with st.expander(f"🔎 Ver Estoque Completo da {s_name}", expanded=False):
                     if not st_data.empty:
                         for _, r in st_data.iterrows():
                             st.write(f"• [{r['Hora']}] **{r['product']}**: {int(r['quantity_remaining'])} un. | *Obs:* {r['notes']}")
@@ -626,7 +695,7 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                                 if url:
                                     st.image(url, width=150)
                     else:
-                        st.info("Nenhuma atualização enviada durante o dia para esta loja.")
+                        st.info("Nenhuma atualização enviada hoje para esta loja.")
 
     # 3. ABA DE FECHAMENTO FINAL
     with tab_fechamento:
@@ -649,7 +718,6 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
             sid = str(store["id"])
             s_name = display_names[sid]
             s_resp = staff_by_store[sid]
-            
             st_data = df_fc_today[df_fc_today["store_id"] == sid] if not df_fc_today.empty else pd.DataFrame()
             
             m_g = 0
@@ -671,7 +739,7 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                         for _, r in st_data.iterrows():
                             clean_p_name = r["product"].replace("FECHAMENTO - ", "")
                             if "Maquininha" in clean_p_name or "Dinheiro" in clean_p_name:
-                                st.write(f"💰 **{clean_p_name}**: **R$ {r['quantity_remaining']:.2f}** | *Obs:* {r['notes']}")
+                                st.write(f"💰 **{clean_p_name}**: *Obs/Valor:* {r['notes']}")
                                 if pd.notnull(r.get("photo_path")) and str(r["photo_path"]).strip():
                                     url = signed_photo_url(client, r["photo_path"])
                                     if url:
