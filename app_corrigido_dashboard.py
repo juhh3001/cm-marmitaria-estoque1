@@ -23,7 +23,7 @@ PRODUCT_PRICES = {"Marmitex pequena": 11.99, "Marmitex grande": 15.00, "Refriger
 BUCKET = "stock-photos"
 USERNAME_EMAIL_DOMAIN = "estoque.invalid"
 
-# Estilização CSS (Fundo preto para funcionária e tema geral)
+# Estilização CSS Atualizada
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap');
@@ -70,26 +70,29 @@ html, body, [class*="css"] {
     margin-top: 0.25rem;
 }
 
-/* Cartões das Lojas */
-.store-box {
+/* Cartões Compactos */
+.compact-card {
     background: #FFFFFF;
-    border: 2px solid #FFE082;
-    border-radius: 16px;
-    padding: 1.25rem;
-    margin-bottom: 1rem;
-    box-shadow: 0 4px 12px rgba(218, 165, 32, 0.08);
+    border-radius: 12px;
+    padding: 0.8rem 1rem;
+    margin-bottom: 0.8rem;
+    border-left: 6px solid #FFB300;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.06);
 }
 
-/* Badges */
-.badge {
-    display: inline-block;
-    padding: 0.3rem 0.75rem;
-    border-radius: 999px;
-    font-size: 0.75rem;
-    font-weight: 700;
+/* Alerta em Tela para as Funcionárias */
+.alert-banner {
+    background-color: #FFCC00;
+    color: #000000;
+    padding: 1.2rem;
+    border-radius: 14px;
+    border: 3px solid #D97706;
+    text-align: center;
+    font-weight: 800;
+    font-size: 1.1rem;
+    margin-bottom: 1.5rem;
+    animation: pulse 2s infinite;
 }
-.badge-success { background-color: #E8F5E9; color: #2E7D32; border: 1px solid #A5D6A7; }
-.badge-warning { background-color: #FFF3E0; color: #E65100; border: 1px solid #FFCC80; }
 
 /* Botões Gerais */
 div.stButton > button, [data-testid="stFormSubmitButton"] button {
@@ -97,13 +100,8 @@ div.stButton > button, [data-testid="stFormSubmitButton"] button {
     color: #2A1200 !important;
     font-weight: 700 !important;
     border: 2px solid #E69900 !important;
-    border-radius: 12px !important;
-    padding: 0.5rem 1rem !important;
-    transition: all 0.2s ease !important;
-}
-div.stButton > button:hover {
-    background-color: #FFA000 !important;
-    transform: translateY(-1px);
+    border-radius: 10px !important;
+    padding: 0.4rem 0.8rem !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -149,9 +147,9 @@ def login_screen(client: Client):
     c1, c2, c3 = st.columns([1, 1.2, 1])
     with c2:
         st.markdown("""
-        <div style='text-align: center; margin-bottom: 1.5rem; background: #FFFFFF; padding: 2rem; border-radius: 20px; border: 2px solid #FFD54F; box-shadow: 0 8px 20px rgba(0,0,0,0.05);'>
+        <div style='text-align: center; margin-bottom: 1.5rem; background: #FFFFFF; padding: 2rem; border-radius: 20px; border: 2px solid #FFD54F;'>
             <h1 style='color: #2A1200; font-size: 2.2rem; font-weight: 800; margin-bottom: 0;'>🏠 CM MARMITARIA</h1>
-            <p style='color: #8C4A00; font-size: 0.85rem; font-weight: 600; margin-top: 0;'>QUALIDADE | SABOR | TRADIÇÃO · DESDE 2015</p>
+            <p style='color: #8C4A00; font-size: 0.85rem; font-weight: 600;'>QUALIDADE | SABOR | TRADIÇÃO · DESDE 2015</p>
             <hr style='border: 1px solid #FFE082; margin: 1rem 0;'>
             <p style='color: #4A2300; font-size: 1rem; font-weight: 600;'>Controle de Estoque das Lojas</p>
         </div>
@@ -279,6 +277,15 @@ def staff_screen(client: Client, profile: dict):
     store_name = get_store_name(client, store_id)
     display_name = profile.get("display_name") or "Funcionária"
 
+    # Verifica se há alerta ativo do administrador no sistema
+    if st.session_state.get("global_admin_alert"):
+        st.markdown("""
+        <div class="alert-banner">
+            ⚠️ ATENÇÃO: A ADMINISTRAÇÃO SOLICITOU A ATUALIZAÇÃO DO ESTOQUE AGORA!<br>
+            <span style="font-size: 0.9rem; font-weight: 500;">Por favor, informe abaixo as quantidades e valores atuais para o sistema.</span>
+        </div>
+        """, unsafe_allow_html=True)
+
     st.markdown(f"""
     <div class="store-form-box" style="text-align: center;">
         <h1 style="color: #FFB300 !important; margin: 0;">🏠 CM MARMITARIA</h1>
@@ -287,7 +294,7 @@ def staff_screen(client: Client, profile: dict):
     </div>
     """, unsafe_allow_html=True)
 
-    # BOTÃO POP-OVER PARA HISTÓRICO SIMPLES DA FUNCIONÁRIA
+    # BOTÃO POP-OVER HISTÓRICO SIMPLES
     c_hist_top, _ = st.columns([2, 1])
     with c_hist_top:
         with st.popover("📜 Ver Meu Histórico de Hoje (Lançamentos Enviados)"):
@@ -299,7 +306,6 @@ def staff_screen(client: Client, profile: dict):
                 ).eq("store_id", store_id).gte("created_at", today_start).order("created_at", desc=True).execute().data or []
                 
                 if user_entries:
-                    # Agrupa os lançamentos por horário de envio
                     df_u = pd.DataFrame(user_entries)
                     df_u["dt"] = pd.to_datetime(df_u["created_at"], errors="coerce", utc=True).dt.tz_convert("America/Sao_Paulo")
                     df_u["Horário"] = df_u["dt"].dt.strftime("%H:%M:%S")
@@ -317,8 +323,8 @@ def staff_screen(client: Client, profile: dict):
                         st.divider()
                 else:
                     st.info("Nenhum lançamento registrado hoje ainda.")
-            except Exception as e:
-                st.error("Não foi possível carregar seu histórico recente.")
+            except Exception:
+                st.error("Não foi possível carregar o histórico recente.")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -392,12 +398,12 @@ def signed_photo_url(client: Client, path: str):
 # Painel do Administrador
 def admin_dashboard(client: Client, profile: dict):
     known_store_labels = {
-        "5": ("Leme", "Kauany"),
-        "10": ("Pirajussara", "Julia"),
-        "8": ("Macedônia", "Kamilly"),
-        "2": ("Tereza", "Gabi"),
-        "1": ("Matriz", "Bia"),
-        "4": ("Vazame", "Iasmim e Samara"),
+        "5": ("Leme", "Kauany", "#FFF8E1"),
+        "10": ("Pirajussara", "Julia", "#E8F5E9"),
+        "8": ("Macedônia", "Kamilly", "#E1F5FE"),
+        "2": ("Tereza", "Gabi", "#F3E5F5"),
+        "1": ("Matriz", "Bia", "#FFF3E0"),
+        "4": ("Vazame", "Iasmim e Samara", "#FBE9E7"),
     }
 
     def display_store_name(raw_name):
@@ -406,9 +412,9 @@ def admin_dashboard(client: Client, profile: dict):
         match = re.search(r"(?:loja\s*)?(10|[1-9])", raw, flags=re.IGNORECASE)
         if match and match.group(1) in known_store_labels:
             number = match.group(1)
-            location, staff = known_store_labels[number]
-            return f"Loja {number} · {location}", staff
-        return (raw or "Unidade sem nome", "Cadastro pendente")
+            location, staff, bg_color = known_store_labels[number]
+            return f"Loja {number} · {location}", staff, bg_color
+        return (raw or "Unidade sem nome", "Cadastro pendente", "#FFFFFF")
 
     st.markdown("""
     <div class="hero-header">
@@ -418,9 +424,12 @@ def admin_dashboard(client: Client, profile: dict):
     </div>
     """, unsafe_allow_html=True)
 
-    col_ctrl1, col_ctrl2, col_ctrl3 = st.columns([1, 1.2, 3])
-    
-    now_br = datetime.now(TZ_BR)
+    # BOTÃO PARA O ADMINISTRADOR SOLICITAR REABASTECIMENTO / ALERTA NAS MENINAS
+    col_alert_btn, col_ctrl1, col_ctrl2 = st.columns([2, 1, 1.5])
+    with col_alert_btn:
+        if st.button("🔔 Solicitar Atualização de Estoque Agora", type="primary"):
+            st.session_state.global_admin_alert = True
+            st.success("Aviso enviado! O alerta aparecerá na tela de todas as funcionárias.")
 
     with col_ctrl1:
         if st.button("🔄 Atualizar"):
@@ -430,31 +439,13 @@ def admin_dashboard(client: Client, profile: dict):
     with col_ctrl2:
         auto_refresh = st.toggle("⏱️ Auto 5 min", value=False)
 
+    now_br = datetime.now(TZ_BR)
     if "last_admin_update" not in st.session_state:
         st.session_state.last_admin_update = now_br
 
     last_time_formatted = st.session_state.last_admin_update.strftime("%d/%m/%Y às %H:%M:%S")
 
-    with col_ctrl3:
-        if auto_refresh:
-            @st.fragment(run_every=1)
-            def countdown_display():
-                now_ts = datetime.now(TZ_BR).timestamp()
-                if "next_refresh_ts" not in st.session_state or st.session_state.next_refresh_ts < now_ts:
-                    st.session_state.next_refresh_ts = now_ts + 300
-                    st.session_state.last_admin_update = datetime.now(TZ_BR)
-                    st.rerun()
-                
-                remaining = int(st.session_state.next_refresh_ts - now_ts)
-                mins = max(0, remaining // 60)
-                secs = max(0, remaining % 60)
-                st.markdown(f"<p style='margin: 0; font-size: 0.85rem; font-weight: 600; color: #8C4A00;'>⏳ Próxima att em: <b>{mins:02d}:{secs:02d}</b> | 🕒 Última atualização do sistema: <b>{last_time_formatted}</b></p>", unsafe_allow_html=True)
-            
-            countdown_display()
-        else:
-            st.session_state.pop("next_refresh_ts", None)
-            st.markdown(f"<p style='margin: 0; font-size: 0.85rem; font-weight: 600; color: #8C4A00;'>🕒 Última atualização do sistema: <b>{last_time_formatted}</b></p>", unsafe_allow_html=True)
-
+    st.caption(f"🕒 Última atualização do sistema: **{last_time_formatted}**")
     st.markdown("<br>", unsafe_allow_html=True)
     _load_and_render_admin_content(client, display_store_name, known_store_labels)
 
@@ -477,6 +468,7 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
     store_names = {str(x["id"]): str(x.get("name") or "Unidade") for x in stores}
     display_names = {key: display_store_name(value)[0] for key, value in store_names.items()}
     staff_by_store = {key: display_store_name(value)[1] for key, value in store_names.items()}
+    color_by_store = {key: display_store_name(value)[2] for key, value in store_names.items()}
     profile_names = {str(x["user_id"]): x.get("display_name") or "Usuário" for x in profiles}
     
     df = pd.DataFrame(entries)
@@ -534,61 +526,65 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                 </div>
                 """, unsafe_allow_html=True)
 
+    # ABA GERENCIAR POR LOJA (CARDS COMPACTOS EM COLUNAS ORGANIZADAS)
     with tab_stores:
-        st.markdown("### 🏪 Gerenciamento por Cards de Lojas")
-        st.caption("Visão simultânea de todas as unidades com fotos, observações e controle de exclusão.")
+        st.markdown("### 🏪 Gerenciamento por Cards Compactos")
+        st.caption("Clique no card de qualquer loja para expandir e ver produtos, fotos e observações.")
 
-        for store in stores:
+        grid_cols = st.columns(2)
+        for idx, store in enumerate(stores):
             sid = str(store["id"])
             name = display_names[sid]
             resp = staff_by_store[sid]
+            bg_col = color_by_store.get(sid, "#FFFFFF")
             store_latest = latest[latest["store_id"] == sid] if not latest.empty else pd.DataFrame()
 
-            with st.expander(f"🏪 **{name}** · Responsável: {resp}", expanded=True):
-                col_info, col_del = st.columns([3, 1])
-                with col_info:
-                    st.markdown(f"**Registros Atuais da {name}:**")
-                with col_del:
-                    with st.popover(f"🗑️ Apagar Registros da {name}"):
-                        st.warning("Confirma a exclusão de todos os registros desta loja?")
-                        if st.button("Confirmar Apagar Tudo", key=f"del_card_store_{sid}"):
-                            try:
-                                client.table("stock_entries").delete().eq("store_id", sid).execute()
-                                st.success("Registros da loja apagados!")
-                                st.rerun()
-                            except Exception:
-                                st.error("Erro ao apagar.")
+            with grid_cols[idx % 2]:
+                with st.expander(f"🏪 **{name}** ({resp})", expanded=False):
+                    col_del, _ = st.columns([1, 1])
+                    with col_del:
+                        with st.popover(f"🗑️ Apagar {name}"):
+                            st.warning("Confirma a exclusão de todos os registros desta loja?")
+                            if st.button("Confirmar Apagar", key=f"del_card_store_{sid}"):
+                                try:
+                                    client.table("stock_entries").delete().eq("store_id", sid).execute()
+                                    st.success("Registros apagados!")
+                                    st.rerun()
+                                except Exception:
+                                    st.error("Erro ao apagar.")
 
-                if not store_latest.empty:
-                    for _, row in store_latest.iterrows():
-                        c1, c2, c3, c4 = st.columns([3, 1.2, 1.2, 1])
-                        
-                        p_name = row["product"]
-                        qty = int(row["quantity_remaining"])
-                        notes = row.get("notes") or "Sem observação"
-                        
-                        c1.markdown(f"• **{p_name}**: <small>{notes}</small>", unsafe_allow_html=True)
-                        c2.markdown(f"**{qty} un.**")
+                    st.markdown("<hr style='margin: 0.5rem 0;'>", unsafe_allow_html=True)
 
-                        path = row.get("photo_path")
-                        url = signed_photo_url(client, path) if isinstance(path, str) and path.strip() else None
-                        if url:
-                            with c3.popover("📷 Ver Foto"):
-                                st.image(url, use_container_width=True)
-                        else:
-                            c3.caption("Sem foto")
+                    if not store_latest.empty:
+                        for _, row in store_latest.iterrows():
+                            c1, c2, c3, c4 = st.columns([2.5, 1, 1, 0.8])
+                            
+                            p_name = row["product"]
+                            qty = int(row["quantity_remaining"])
+                            notes = row.get("notes") or "Sem obs"
+                            
+                            c1.markdown(f"• **{p_name}**<br><small style='color: #64748B;'>{notes}</small>", unsafe_allow_html=True)
+                            c2.markdown(f"**{qty} un.**")
 
-                        row_id = row.get("id")
-                        if c4.button("🗑️ Apagar", key=f"del_card_item_{row_id}"):
-                            try:
-                                client.table("stock_entries").delete().eq("id", row_id).execute()
-                                st.success("Item apagado!")
-                                st.rerun()
-                            except Exception:
-                                st.error("Erro ao apagar item.")
-                        st.divider()
-                else:
-                    st.info("Nenhum registro ativo para esta unidade.")
+                            path = row.get("photo_path")
+                            url = signed_photo_url(client, path) if isinstance(path, str) and path.strip() else None
+                            if url:
+                                with c3.popover("📷 Foto"):
+                                    st.image(url, use_container_width=True)
+                            else:
+                                c3.caption("Sem foto")
+
+                            row_id = row.get("id")
+                            if c4.button("🗑️", key=f"del_card_item_{row_id}"):
+                                try:
+                                    client.table("stock_entries").delete().eq("id", row_id).execute()
+                                    st.success("Item apagado!")
+                                    st.rerun()
+                                except Exception:
+                                    st.error("Erro ao apagar.")
+                            st.divider()
+                    else:
+                        st.info("Nenhum registro ativo para esta unidade.")
 
     with tab_carteirinhas:
         st.markdown("### 🏷️ Carteirinhas de Estoque Completo de Todas as Lojas")
