@@ -19,7 +19,7 @@ PRODUCT_PRICES = {"Marmitex pequena": 11.99, "Marmitex grande": 15.00, "Refriger
 BUCKET = "stock-photos"
 USERNAME_EMAIL_DOMAIN = "estoque.invalid"
 
-# Estilização CSS (Ajustada para o fundo preto na área da funcionária e tema geral)
+# Estilização CSS (Fundo preto para funcionária e tema geral)
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap');
@@ -253,7 +253,6 @@ def save_complete_record(client: Client, profile: dict, quantities: dict, photos
     store_id = str(profile["store_id"])
     created_at = datetime.now(timezone.utc).isoformat()
     
-    # Faz upload do comprovante de cartão se houver
     card_receipt_path = upload_photo(client, fin_data.get("card_photo"), store_id, user_id)
     
     rows = []
@@ -272,9 +271,8 @@ def save_complete_record(client: Client, profile: dict, quantities: dict, photos
     return client.table("stock_entries").insert(rows).execute()
 
 
-# Interface das Funcionárias (Fundo Preto e 4 Telas Sequenciais)
+# Interface das Funcionárias (Fundo Preto e 4 Telas)
 def staff_screen(client: Client, profile: dict):
-    # Aplica o fundo preto para a funcionária
     st.markdown("""
     <style>
     .stApp {
@@ -304,7 +302,6 @@ def staff_screen(client: Client, profile: dict):
 
     step = st.session_state.staff_step
 
-    # TELA 1 — Início
     if step == 1:
         st.markdown(f"""
         <div style="background: #1A1A1A; padding: 1.5rem; border-radius: 16px; border: 2px solid #FFB300; text-align: center; margin-bottom: 1.5rem;">
@@ -318,30 +315,25 @@ def staff_screen(client: Client, profile: dict):
             st.session_state.staff_step = 2
             st.rerun()
 
-    # TELA 2 — Estoque com botões de - e +
     elif step == 2:
         st.markdown(f"<h2>📦 Tela 2/4: Estoque · {store_name}</h2>", unsafe_allow_html=True)
         st.info("Ajuste a quantidade restante de cada produto. Foto opcional.")
 
         for product in PRODUCTS:
             st.markdown(f"**{product}**")
-            col_btn1, col_val, col_btn2, col_foto = st.loc_cols([1, 1.5, 1, 3]) if hasattr(st, "loc_cols") else st.columns([1, 1.5, 1, 3])
+            col_btn1, col_val, col_btn2, col_foto = st.columns([1, 1.5, 1, 3])
             
-            # Botão de menos
             if col_btn1.button("➖", key=f"minus_{product}"):
                 if st.session_state.form_qtys[product] > 0:
                     st.session_state.form_qtys[product] -= 1
                     st.rerun()
             
-            # Valor atual
             col_val.markdown(f"<div style='text-align: center; font-size: 1.2rem; font-weight: bold; padding-top: 5px;'>{st.session_state.form_qtys[product]} un.</div>", unsafe_allow_html=True)
             
-            # Botão de mais
             if col_btn2.button("➕", key=f"plus_{product}"):
                 st.session_state.form_qtys[product] += 1
                 st.rerun()
 
-            # Foto opcional
             with col_foto.expander("📷 Foto opcional"):
                 p_up = st.file_uploader(f"Foto {product}", type=["jpg", "jpeg", "png", "webp"], key=f"ph_{product}", label_visibility="collapsed")
                 if p_up:
@@ -357,7 +349,6 @@ def staff_screen(client: Client, profile: dict):
             st.session_state.staff_step = 3
             st.rerun()
 
-    # TELA 3 — Financeiro
     elif step == 3:
         st.markdown(f"<h2>💳 Tela 3/4: Informações Financeiras</h2>", unsafe_allow_html=True)
         
@@ -378,7 +369,6 @@ def staff_screen(client: Client, profile: dict):
             st.session_state.staff_step = 4
             st.rerun()
 
-    # TELA 4 — Conferência e Envio
     elif step == 4:
         st.markdown(f"<h2>📋 Tela 4/4: Conferência Geral</h2>", unsafe_allow_html=True)
         st.markdown("Confira se os dados abaixo estão corretos antes de enviar:")
@@ -402,7 +392,6 @@ def staff_screen(client: Client, profile: dict):
             try:
                 save_complete_record(client, profile, st.session_state.form_qtys, st.session_state.form_photos, st.session_state.form_fin)
                 st.success("🎉 Lançamento enviado e salvo com sucesso!")
-                # Limpa o estado
                 st.session_state.staff_step = 1
                 st.session_state.form_qtys = {p: 0 for p in PRODUCTS}
                 st.session_state.form_photos = {p: None for p in PRODUCTS}
@@ -420,7 +409,7 @@ def signed_photo_url(client: Client, path: str):
         return None
 
 
-# Painel do Administrador (Com Auto-atualização de 5 min e Botão de Atualizar)
+# Painel do Administrador (Com contagem regressiva e atualização de 5 min)
 def admin_dashboard(client: Client, profile: dict):
     known_store_labels = {
         "5": ("Leme", "Kauany"),
@@ -449,22 +438,44 @@ def admin_dashboard(client: Client, profile: dict):
     </div>
     """, unsafe_allow_html=True)
 
-    # Controles de Atualização do Admin (Botão de Atualizar e Auto 5 minutos)
-    col_ctrl1, col_ctrl2 = st.columns([1, 3])
+    # Controles de Atualização do Admin com contagem regressiva
+    col_ctrl1, col_ctrl2, col_ctrl3 = st.columns([1, 1.2, 2.5])
+    
     with col_ctrl1:
-        if st.button("🔄 Atualizar Agora"):
+        if st.button("🔄 Atualizar"):
+            st.session_state.last_admin_update = datetime.now(timezone.utc).astimezone()
             st.rerun()
-    with col_ctrl2:
-        auto_refresh = st.toggle("⏱️ Ativar Auto-atualização (a cada 5 minutos)", value=False)
 
-    # Se o auto-refresh estiver ativo, usamos fragment com run_every=300 segundos
-    if auto_refresh:
-        @st.fragment(run_every=300)
-        def render_live_admin_content():
-            _load_and_render_admin_content(client, display_store_name, known_store_labels)
-        render_live_admin_content()
-    else:
-        _load_and_render_admin_content(client, display_store_name, known_store_labels)
+    with col_ctrl2:
+        auto_refresh = st.toggle("⏱️ Auto 5 min", value=False)
+
+    if "last_admin_update" not in st.session_state:
+        st.session_state.last_admin_update = datetime.now(timezone.utc).astimezone()
+
+    last_time_formatted = st.session_state.last_admin_update.strftime("%H:%M:%S")
+
+    with col_ctrl3:
+        if auto_refresh:
+            # Exibe contagem regressiva baseada no tempo atual usando st.fragment com run_every=1
+            @st.fragment(run_every=1)
+            def countdown_display():
+                now_ts = datetime.now(timezone.utc).timestamp()
+                if "next_refresh_ts" not in st.session_state or st.session_state.next_refresh_ts < now_ts:
+                    st.session_state.next_refresh_ts = now_ts + 300
+                    st.rerun()
+                
+                remaining = int(st.session_state.next_refresh_ts - now_ts)
+                mins = remaining // 60
+                secs = remaining % 60
+                st.markdown(f"<p style='margin: 0; font-size: 0.9rem; font-weight: 600; color: #8C4A00;'>⏳ Próxima att em: <b>{mins:02d}:{secs:02d}</b> | 🕒 Última: {last_time_formatted}</p>", unsafe_allow_html=True)
+            
+            countdown_display()
+        else:
+            st.session_state.pop("next_refresh_ts", None)
+            st.markdown(f"<p style='margin: 0; font-size: 0.9rem; font-weight: 600; color: #8C4A00;'>🕒 Última atualização: <b>{last_time_formatted}</b></p>", unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    _load_and_render_admin_content(client, display_store_name, known_store_labels)
 
 
 def _load_and_render_admin_content(client, display_store_name, known_store_labels):
@@ -507,18 +518,11 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
     total_latest_units = int(pd.to_numeric(latest.get("quantity_remaining", pd.Series(dtype=float)), errors="coerce").fillna(0).sum()) if not latest.empty else 0
     entries_today = int((df["dt_object"].dt.date == today).sum()) if not df.empty else 0
 
-    total_value = 0
-    if not latest.empty:
-        for _, row in latest.iterrows():
-            p_name = row["product"]
-            p_qty = row["quantity_remaining"]
-            total_value += p_qty * PRODUCT_PRICES.get(p_name, 0.0)
-
-    k1, k2, k3, k4 = st.columns(4)
+    # Removido o bloco de valor estimado, agora exibe apenas 3 KPIs principais
+    k1, k2, k3 = st.columns(3)
     k1.markdown(f'<div class="kpi-card"><div class="kpi-title">Lojas Ativas</div><div class="kpi-value">{total_stores} Unidades</div></div>', unsafe_allow_html=True)
     k2.markdown(f'<div class="kpi-card"><div class="kpi-title">Estoque Total</div><div class="kpi-value">{total_latest_units} un.</div></div>', unsafe_allow_html=True)
-    k3.markdown(f'<div class="kpi-card"><div class="kpi-title">Valor Estimado</div><div class="kpi-value">R$ {total_value:,.2f}</div></div>', unsafe_allow_html=True)
-    k4.markdown(f'<div class="kpi-card"><div class="kpi-title">Lançamentos Hoje</div><div class="kpi-value">{entries_today}</div></div>', unsafe_allow_html=True)
+    k3.markdown(f'<div class="kpi-card"><div class="kpi-title">Lançamentos Hoje</div><div class="kpi-value">{entries_today}</div></div>', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
