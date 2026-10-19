@@ -23,7 +23,7 @@ PRODUCT_PRICES = {"Marmitex pequena": 11.99, "Marmitex grande": 15.00, "Refriger
 BUCKET = "stock-photos"
 USERNAME_EMAIL_DOMAIN = "estoque.invalid"
 
-# Estilização CSS Atualizada
+# CSS Personalizado - Cards com bordas coloridas, espaçamento claro e design limpo
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap');
@@ -70,28 +70,27 @@ html, body, [class*="css"] {
     margin-top: 0.25rem;
 }
 
-/* Cartões Compactos */
-.compact-card {
-    background: #FFFFFF;
-    border-radius: 12px;
-    padding: 0.8rem 1rem;
-    margin-bottom: 0.8rem;
-    border-left: 6px solid #FFB300;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.06);
-}
-
-/* Alerta em Tela para as Funcionárias */
+/* Estilo do Banner de Alerta Real no Celular */
 .alert-banner {
     background-color: #FFCC00;
-    color: #000000;
-    padding: 1.2rem;
-    border-radius: 14px;
-    border: 3px solid #D97706;
+    color: #1A1A1A;
+    padding: 1.5rem;
+    border-radius: 16px;
+    border: 3px solid #E69900;
     text-align: center;
     font-weight: 800;
-    font-size: 1.1rem;
+    font-size: 1.15rem;
     margin-bottom: 1.5rem;
-    animation: pulse 2s infinite;
+    box-shadow: 0 6px 16px rgba(255, 204, 0, 0.4);
+}
+
+/* Caixas dos itens dentro dos cards */
+.item-box {
+    background-color: #F8FAFC;
+    border: 1px solid #E2E8F0;
+    border-radius: 12px;
+    padding: 0.85rem 1rem;
+    margin-bottom: 0.75rem;
 }
 
 /* Botões Gerais */
@@ -211,6 +210,26 @@ def get_store_name(client: Client, store_id):
         return "Sua loja"
 
 
+def check_and_get_alert(client: Client):
+    """Consulta o Supabase para verificar se há algum alerta ativo enviado pela administração"""
+    try:
+        res = client.table("system_settings").select("value").eq("key", "stock_request_alert").single().execute()
+        if res.data and res.data.get("value") == "active":
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def set_alert_status(client: Client, active: bool):
+    """Atualiza o alerta global no Supabase para atingir todos os dispositivos"""
+    try:
+        val = "active" if active else "inactive"
+        client.table("system_settings").upsert({"key": "stock_request_alert", "value": val}).execute()
+    except Exception:
+        pass
+
+
 def upload_photo(client: Client, uploaded_file, store_id: str, user_id: str):
     if uploaded_file is None:
         return None
@@ -277,12 +296,12 @@ def staff_screen(client: Client, profile: dict):
     store_name = get_store_name(client, store_id)
     display_name = profile.get("display_name") or "Funcionária"
 
-    # Verifica se há alerta ativo do administrador no sistema
-    if st.session_state.get("global_admin_alert"):
+    # Verifica alerta em tempo real no Supabase
+    if check_and_get_alert(client):
         st.markdown("""
         <div class="alert-banner">
-            ⚠️ ATENÇÃO: A ADMINISTRAÇÃO SOLICITOU A ATUALIZAÇÃO DO ESTOQUE AGORA!<br>
-            <span style="font-size: 0.9rem; font-weight: 500;">Por favor, informe abaixo as quantidades e valores atuais para o sistema.</span>
+            🚨 ATENÇÃO: A ADMINISTRAÇÃO SOLICITOU A ATUALIZAÇÃO DO ESTOQUE AGORA!<br>
+            <span style="font-size: 0.95rem; font-weight: 500;">Por favor, preencha as quantidades e valores abaixo e clique em Enviar.</span>
         </div>
         """, unsafe_allow_html=True)
 
@@ -294,7 +313,6 @@ def staff_screen(client: Client, profile: dict):
     </div>
     """, unsafe_allow_html=True)
 
-    # BOTÃO POP-OVER HISTÓRICO SIMPLES
     c_hist_top, _ = st.columns([2, 1])
     with c_hist_top:
         with st.popover("📜 Ver Meu Histórico de Hoje (Lançamentos Enviados)"):
@@ -397,13 +415,14 @@ def signed_photo_url(client: Client, path: str):
 
 # Painel do Administrador
 def admin_dashboard(client: Client, profile: dict):
+    # Cores de borda distintas para cada loja
     known_store_labels = {
-        "5": ("Leme", "Kauany", "#FFF8E1"),
-        "10": ("Pirajussara", "Julia", "#E8F5E9"),
-        "8": ("Macedônia", "Kamilly", "#E1F5FE"),
-        "2": ("Tereza", "Gabi", "#F3E5F5"),
-        "1": ("Matriz", "Bia", "#FFF3E0"),
-        "4": ("Vazame", "Iasmim e Samara", "#FBE9E7"),
+        "5": ("Leme", "Kauany", "#E65100"),        # Laranja
+        "10": ("Pirajussara", "Julia", "#2E7D32"),  # Verde
+        "8": ("Macedônia", "Kamilly", "#0288D1"),  # Azul
+        "2": ("Tereza", "Gabi", "#7B1FA2"),       # Roxo
+        "1": ("Matriz", "Bia", "#F57C00"),        # Amarelo/Laranja
+        "4": ("Vazame", "Iasmim e Samara", "#C2185B"), # Rosa/Vinho
     }
 
     def display_store_name(raw_name):
@@ -412,9 +431,9 @@ def admin_dashboard(client: Client, profile: dict):
         match = re.search(r"(?:loja\s*)?(10|[1-9])", raw, flags=re.IGNORECASE)
         if match and match.group(1) in known_store_labels:
             number = match.group(1)
-            location, staff, bg_color = known_store_labels[number]
-            return f"Loja {number} · {location}", staff, bg_color
-        return (raw or "Unidade sem nome", "Cadastro pendente", "#FFFFFF")
+            location, staff, border_color = known_store_labels[number]
+            return f"Loja {number} · {location}", staff, border_color
+        return (raw or "Unidade sem nome", "Cadastro pendente", "#FFB300")
 
     st.markdown("""
     <div class="hero-header">
@@ -424,20 +443,21 @@ def admin_dashboard(client: Client, profile: dict):
     </div>
     """, unsafe_allow_html=True)
 
-    # BOTÃO PARA O ADMINISTRADOR SOLICITAR REABASTECIMENTO / ALERTA NAS MENINAS
-    col_alert_btn, col_ctrl1, col_ctrl2 = st.columns([2, 1, 1.5])
+    col_alert_btn, col_alert_off, col_ctrl1 = st.columns([2, 1.2, 1])
     with col_alert_btn:
-        if st.button("🔔 Solicitar Atualização de Estoque Agora", type="primary"):
-            st.session_state.global_admin_alert = True
-            st.success("Aviso enviado! O alerta aparecerá na tela de todas as funcionárias.")
+        if st.button("🔔 Solicitar Atualização de Estoque Agorina", type="primary"):
+            set_alert_status(client, True)
+            st.success("Aviso enviado! O alerta foi ativado no celular das funcionárias.")
+
+    with col_alert_off:
+        if st.button("🔕 Desativar Alerta"):
+            set_alert_status(client, False)
+            st.info("Alerta desativado.")
 
     with col_ctrl1:
         if st.button("🔄 Atualizar"):
             st.session_state.last_admin_update = datetime.now(TZ_BR)
             st.rerun()
-
-    with col_ctrl2:
-        auto_refresh = st.toggle("⏱️ Auto 5 min", value=False)
 
     now_br = datetime.now(TZ_BR)
     if "last_admin_update" not in st.session_state:
@@ -468,7 +488,7 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
     store_names = {str(x["id"]): str(x.get("name") or "Unidade") for x in stores}
     display_names = {key: display_store_name(value)[0] for key, value in store_names.items()}
     staff_by_store = {key: display_store_name(value)[1] for key, value in store_names.items()}
-    color_by_store = {key: display_store_name(value)[2] for key, value in store_names.items()}
+    border_by_store = {key: display_store_name(value)[2] for key, value in store_names.items()}
     profile_names = {str(x["user_id"]): x.get("display_name") or "Usuário" for x in profiles}
     
     df = pd.DataFrame(entries)
@@ -526,21 +546,31 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                 </div>
                 """, unsafe_allow_html=True)
 
-    # ABA GERENCIAR POR LOJA (CARDS COMPACTOS EM COLUNAS ORGANIZADAS)
+    # CARDS SEPARADOS, BORDAS COLORIDAS E ESPAÇAMENTO PERFEITO
     with tab_stores:
-        st.markdown("### 🏪 Gerenciamento por Cards Compactos")
-        st.caption("Clique no card de qualquer loja para expandir e ver produtos, fotos e observações.")
+        st.markdown("### 🏪 Gerenciamento por Cards por Loja")
+        st.caption("Cada loja possui seu card individual organizado com borda colorida e espaçamento limpo.")
 
         grid_cols = st.columns(2)
         for idx, store in enumerate(stores):
             sid = str(store["id"])
             name = display_names[sid]
             resp = staff_by_store[sid]
-            bg_col = color_by_store.get(sid, "#FFFFFF")
+            b_color = border_by_store.get(sid, "#FFB300")
             store_latest = latest[latest["store_id"] == sid] if not latest.empty else pd.DataFrame()
 
             with grid_cols[idx % 2]:
-                with st.expander(f"🏪 **{name}** ({resp})", expanded=False):
+                # Moldura do Card com borda colorida destacada
+                st.markdown(f"""
+                <div style="border-left: 8px solid {b_color}; border-top: 1px solid #E2E8F0; border-right: 1px solid #E2E8F0; border-bottom: 1px solid #E2E8F0; border-radius: 14px; padding: 1.2rem; background: #FFFFFF; margin-bottom: 1.5rem; box-shadow: 0 4px 10px rgba(0,0,0,0.03);">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h4 style="margin: 0; color: #1E293B;">🏪 {name}</h4>
+                        <span style="font-size: 0.85rem; color: #64748B; font-weight: 600;">{resp}</span>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                with st.expander(f"🔍 Ver detalhes / Gerenciar {name}", expanded=False):
                     col_del, _ = st.columns([1, 1])
                     with col_del:
                         with st.popover(f"🗑️ Apagar {name}"):
@@ -548,41 +578,47 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                             if st.button("Confirmar Apagar", key=f"del_card_store_{sid}"):
                                 try:
                                     client.table("stock_entries").delete().eq("store_id", sid).execute()
-                                    st.success("Registros apagados!")
+                                    st.success("Registros apagados com sucesso!")
                                     st.rerun()
                                 except Exception:
                                     st.error("Erro ao apagar.")
 
-                    st.markdown("<hr style='margin: 0.5rem 0;'>", unsafe_allow_html=True)
+                    st.markdown("<br>", unsafe_allow_html=True)
 
                     if not store_latest.empty:
                         for _, row in store_latest.iterrows():
-                            c1, c2, c3, c4 = st.columns([2.5, 1, 1, 0.8])
-                            
                             p_name = row["product"]
                             qty = int(row["quantity_remaining"])
-                            notes = row.get("notes") or "Sem obs"
+                            notes = row.get("notes") or "Sem observações"
                             
-                            c1.markdown(f"• **{p_name}**<br><small style='color: #64748B;'>{notes}</small>", unsafe_allow_html=True)
-                            c2.markdown(f"**{qty} un.**")
+                            st.markdown(f"""
+                            <div class="item-box">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <strong style="color: #0F172A; font-size: 1rem;">🍲 {p_name}</strong>
+                                    <span style="background: #FEF3C7; color: #92400E; padding: 0.2rem 0.6rem; border-radius: 8px; font-weight: 700; font-size: 0.9rem;">{qty} un.</span>
+                                </div>
+                                <p style="margin: 0.4rem 0 0 0; color: #475569; font-size: 0.82rem;">📝 {notes}</p>
+                            </div>
+                            """, unsafe_allow_html=True)
 
+                            c3, c4 = st.columns([1, 1])
                             path = row.get("photo_path")
                             url = signed_photo_url(client, path) if isinstance(path, str) and path.strip() else None
                             if url:
-                                with c3.popover("📷 Foto"):
+                                with c3.popover("📷 Ver Foto"):
                                     st.image(url, use_container_width=True)
                             else:
                                 c3.caption("Sem foto")
 
                             row_id = row.get("id")
-                            if c4.button("🗑️", key=f"del_card_item_{row_id}"):
+                            if c4.button("🗑️ Excluir Item", key=f"del_card_item_{row_id}"):
                                 try:
                                     client.table("stock_entries").delete().eq("id", row_id).execute()
                                     st.success("Item apagado!")
                                     st.rerun()
                                 except Exception:
                                     st.error("Erro ao apagar.")
-                            st.divider()
+                            st.markdown("<hr style='margin: 0.8rem 0; border: 0.5px solid #F1F5F9;'>", unsafe_allow_html=True)
                     else:
                         st.info("Nenhum registro ativo para esta unidade.")
 
