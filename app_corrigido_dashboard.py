@@ -2,9 +2,8 @@ import os
 import uuid
 import zoneinfo
 from datetime import datetime, timezone
-
-import pandas as pd
 import streamlit as st
+from streamlit_autorefresh import st_autorefresh
 from supabase import create_client, Client
 
 # Configuração da Página
@@ -20,7 +19,7 @@ PRODUCTS = ["Marmitex pequena", "Marmitex grande", "Refrigerante pequeno", "Refr
 BUCKET = "stock-photos"
 USERNAME_EMAIL_DOMAIN = "estoque.invalid"
 
-# Estilização CSS Limpa, Espaçada e com Texto em Destaque
+# Estilização CSS: Fundo Claro Corporativo para Admin + Formulário Escuro Original para Funcionárias
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800;900&display=swap');
@@ -67,7 +66,7 @@ html, body, [class*="css"] {
     color: #1E170A !important;
 }
 
-/* Card Principal da Loja */
+/* Card Principal da Loja (Admin) */
 .store-detail-card {
     background: #FFFFFF;
     border: 1px solid #CBD5E1;
@@ -96,38 +95,6 @@ html, body, [class*="css"] {
     font-weight: 800;
     padding: 0.25rem 0.75rem;
     border-radius: 8px;
-}
-
-/* Tabela de Produtos Organizada em Linhas */
-.product-item-row {
-    display: grid;
-    grid-template-columns: 2fr 1fr 1fr 3fr;
-    align-items: center;
-    background: #F8FAFC;
-    border: 1px solid #E2E8F0;
-    border-radius: 10px;
-    padding: 0.6rem 0.9rem;
-    margin-bottom: 0.5rem;
-    gap: 0.8rem;
-}
-.product-item-name {
-    font-weight: 800;
-    color: #0F172A;
-    font-size: 0.9rem;
-}
-.product-item-qty {
-    font-weight: 900;
-    color: #1E170A;
-    background: #FFE885;
-    padding: 0.2rem 0.5rem;
-    border-radius: 6px;
-    text-align: center;
-    font-size: 0.9rem;
-}
-.product-item-obs {
-    font-size: 0.82rem;
-    color: #475569;
-    font-style: italic;
 }
 
 /* Painel de Fechamento Financeiro no Rodapé */
@@ -307,17 +274,26 @@ def save_complete_form(client: Client, profile: dict, form_data: dict, photos_da
     return client.table("stock_entries").insert(rows).execute()
 
 
-# Tela das Funcionárias
+# TELA ORIGINAL DAS FUNCIONÁRIAS (LAYOUT ESCURO COM FORMULÁRIO)
 def staff_screen(client: Client, profile: dict):
     store_id = str(profile.get("store_id", ""))
     store_name = get_store_name(client, store_id)
     display_name = profile.get("display_name") or "Funcionária"
 
-    st.markdown(f"## 🍲 Fechamento de Estoque · **{store_name}**")
-    st.caption(f"Responsável: **{display_name}**")
+    st.markdown(f"""
+    <style>
+    .stApp {{
+        background-color: #0E1117 !important;
+        background-image: none !important;
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown(f"## 🍲 Olá, {display_name} · **{store_name}**")
+    st.caption("Preencha a contagem dos produtos e o fechamento financeiro no final.")
 
     with st.form("single_staff_form", clear_on_submit=True):
-        st.markdown("### 📦 1. Quantidades em Estoque")
+        st.markdown("### 📦 1. Quantidade de Produtos")
         
         form_data = {}
         photos_data = {}
@@ -331,22 +307,22 @@ def staff_screen(client: Client, profile: dict):
             with c2:
                 photos_data[product] = st.file_uploader("Foto do item", type=["jpg", "jpeg", "png", "webp"], key=f"photo_{product}")
             with c3:
-                notes_data[product] = st.text_input("Observação do item", placeholder="Ex: No freezer...", key=f"note_{product}")
+                notes_data[product] = st.text_input("Observação", placeholder="Ex: No freezer...", key=f"note_{product}")
             st.divider()
 
         st.markdown("### 💰 2. Fechamento Financeiro da Loja")
         fc1, fc2 = st.columns(2)
         with fc1:
-            card_val = st.number_input("Maquininha (R$)", min_value=0.0, step=0.50, value=0.0, key="card_val_in")
-            card_photo = st.file_uploader("Foto Comprovante Maquininha", type=["jpg", "jpeg", "png", "webp"], key="card_ph_in")
+            card_val = st.number_input("Maquininha / Cartão (R$)", min_value=0.0, step=0.50, value=0.0, key="card_val_in")
+            card_photo = st.file_uploader("Foto do comprovante cartão", type=["jpg", "jpeg", "png", "webp"], key="card_ph_in")
             card_note = st.text_input("Obs Maquininha", key="card_note_in")
             
         with fc2:
             cash_val = st.number_input("Dinheiro na Gaveta (R$)", min_value=0.0, step=0.50, value=0.0, key="cash_val_in")
-            cash_photo = st.file_uploader("Foto Dinheiro / Envelope", type=["jpg", "jpeg", "png", "webp"], key="cash_ph_in")
+            cash_photo = st.file_uploader("Foto Envelope / Dinheiro", type=["jpg", "jpeg", "png", "webp"], key="cash_ph_in")
             cash_note = st.text_input("Obs Dinheiro", key="cash_note_in")
 
-        submitted = st.form_submit_button("✅ ENVIAR FECHAMENTO COMPLETO", type="primary", use_container_width=True)
+        submitted = st.form_submit_button("✅ ENVIAR FECHAMENTO", type="primary", use_container_width=True)
 
     if submitted:
         try:
@@ -389,24 +365,53 @@ def admin_dashboard(client: Client, profile: dict):
             return f"Loja {number} - {location}", staff
         return (raw or "Unidade Comercial", "Cadastro Pendente")
 
-    now_time = datetime.now(TZ_BR).strftime("%d/%m/%Y às %H:%M:%S")
+    if "auto_refresh_active" not in st.session_state:
+        st.session_state.auto_refresh_active = True
 
-    c_top_l, c_top_r = st.columns([3, 1.3])
+    if "last_manual_sync" not in st.session_state:
+        st.session_state.last_manual_sync = datetime.now(TZ_BR)
+
+    now_time = datetime.now(TZ_BR).strftime("%d/%m/%Y às %H:%M:%S")
+    last_sync_str = st.session_state.last_manual_sync.strftime("%d/%m/%Y às %H:%M:%S")
+
+    c_top_l, c_top_btn, c_top_r = st.columns([2.2, 1.3, 1.3])
+    
     with c_top_l:
         st.markdown("""
         <div>
-            <h1 style='font-size: 2.2rem; font-weight: 900; color: #0F172A; margin:0;'>Painel Central de Gestão</h1>
-            <p style='font-size: 0.95rem; font-weight: 600; color: #64748B; margin-top: 0.2rem;'>Acompanhamento em tempo real das unidades</p>
+            <h1 style='font-size: 2rem; font-weight: 900; color: #0F172A; margin:0;'>Painel Central de Gestão</h1>
+            <p style='font-size: 0.9rem; font-weight: 600; color: #64748B; margin-top: 0.2rem;'>Acompanhamento em tempo real</p>
         </div>
         """, unsafe_allow_html=True)
-    
+
+    with c_top_btn:
+        st.markdown("<div style='margin-top: 0.2rem;'></div>", unsafe_allow_html=True)
+        col_b1, col_b2 = st.columns(2)
+        with col_b1:
+            if st.button("🔄 Atualizar"):
+                st.session_state.last_manual_sync = datetime.now(TZ_BR)
+                st.rerun()
+        with col_b2:
+            if st.session_state.auto_refresh_active:
+                if st.button("⏱️ Auto: LIGADO"):
+                    st.session_state.auto_refresh_active = False
+                    st.rerun()
+            else:
+                if st.button("⏱️ Auto: DESLIGADO"):
+                    st.session_state.auto_refresh_active = True
+                    st.rerun()
+
     with c_top_r:
         st.markdown(f"""
-        <div style="background: #FFFFFF; border: 2px solid #FFCC00; border-radius: 12px; padding: 0.8rem 1rem; text-align: right; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
-            <div style="font-size: 0.72rem; font-weight: 800; color: #854D0E; text-transform: uppercase;">🕒 Última Sincronização</div>
-            <div style="font-size: 0.92rem; font-weight: 900; color: #0F172A; margin-top: 0.1rem;">{now_time}</div>
+        <div style="background: #FFFFFF; border: 2px solid #FFCC00; border-radius: 12px; padding: 0.6rem 0.9rem; text-align: right; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
+            <div style="font-size: 0.7rem; font-weight: 800; color: #854D0E; text-transform: uppercase;">🕒 Última Sincronização</div>
+            <div style="font-size: 0.85rem; font-weight: 900; color: #0F172A; margin-top: 0.1rem;">{last_sync_str}</div>
         </div>
         """, unsafe_allow_html=True)
+
+    if st.session_state.auto_refresh_active:
+        st_autorefresh(interval=300000, key="datarefresh_timer")
+        st.caption("⚡ Atualização automática a cada 5 minutos ativada.")
 
     st.markdown("<br>", unsafe_allow_html=True)
     _load_and_render_admin_content(client, display_store_name)
@@ -461,7 +466,6 @@ def _load_and_render_admin_content(client, display_store_name):
 
     total_financial = len(stores_with_entries_today)
 
-    # Cards Métricas do Topo
     m1, m2, m3, m4 = st.columns(4)
     with m1:
         st.markdown(f"""
@@ -499,7 +503,6 @@ def _load_and_render_admin_content(client, display_store_name):
 
     menu = st.session_state.get("menu_page", "lojas")
 
-    # VISÃO GERAL (APENAS MARMITAS)
     if menu in ["lojas", "inicio"]:
         st.markdown("### 📌 Visão Geral do Estoque de Marmitas")
         st.caption("Apenas marmitas grandes e pequenas com o horário do último envio.")
@@ -547,12 +550,10 @@ def _load_and_render_admin_content(client, display_store_name):
                 </div>
                 """, unsafe_allow_html=True)
 
-    # VISÃO DETALHADA POR LOJA (PRODUTOS + FOTOS + OBSERVAÇÕES LADO A LADO + FECHAMENTO NO FINAL)
     elif menu == "detalhes":
         st.markdown("### 🏪 Gerenciamento Detalhado por Unidade")
         st.caption("Visão individual de cada item com foto e observação lado a lado, e fechamento financeiro no final.")
 
-        grid_cols = st.columns(1) # Visualização ampla em tela cheia para ficar perfeito
         for idx, store in enumerate(stores):
             sid = str(store["id"])
             name = display_names[sid]
@@ -593,7 +594,6 @@ def _load_and_render_admin_content(client, display_store_name):
                         st.caption(f"📝 {obs_item if obs_item else 'Sem observação'}")
                     st.markdown("<hr style='margin: 0.4rem 0; border: 0.5px solid #F1F5F9;'>", unsafe_allow_html=True)
 
-                # FECHAMENTO FINANCEIRO DA LOJA NO FINAL
                 first_note = store_latest["notes"].iloc[0] if not store_latest.empty else ""
                 if "[FECHAMENTO FINANCEIRO" in first_note:
                     fin_part = first_note.split("[FECHAMENTO FINANCEIRO DA LOJA] |")[1]
@@ -679,7 +679,6 @@ def main():
     st.session_state.profile = profile
     display_name = profile.get("display_name") or "Usuário"
     
-    # Sidebar Estilizada com Navegação sem a aba "Produtos"
     with st.sidebar:
         st.markdown("""
         <div style="text-align: center; padding: 0.5rem 0 1rem 0; border-bottom: 2px solid #FFCC00; margin-bottom: 1rem;">
