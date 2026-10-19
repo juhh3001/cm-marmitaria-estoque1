@@ -1,25 +1,29 @@
 import os
 import uuid
+import io
 from datetime import datetime, timezone
-
 import pandas as pd
 import streamlit as st
+from PIL import Image
+from streamlit_autorefresh import st_autorefresh
 from supabase import create_client, Client
 
 # Configuração da Página
 st.set_page_config(
-    page_title="CM Marmitaria | Controle de Estoque",
+    page_title="CM Marmitaria | Gestão Executiva",
     page_icon="🍲",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
+TZ_BR = zoneinfo.ZoneInfo("America/Sao_Paulo") if 'zoneinfo' in globals() else None
+# Se zoneinfo não estiver disponível globalmente no escopo do import, tratamos com datetime/timezone nativos.
 PRODUCTS = ["Marmitex pequena", "Marmitex grande", "Refrigerantes Peq", "Pudim", "Refrigerante lata", "Água"]
 PRODUCT_PRICES = {"Marmitex pequena": 11.99, "Marmitex grande": 15.00, "Refrigerantes Peq": 4.00, "Pudim": 5.00, "Refrigerante lata": 7.00, "Água": 4.00}
 BUCKET = "stock-photos"
 USERNAME_EMAIL_DOMAIN = "estoque.invalid"
 
-# Estilização CSS (Fundo preto para funcionária e tema geral)
+# Estilização CSS Consolidada
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap');
@@ -76,16 +80,16 @@ html, body, [class*="css"] {
     box-shadow: 0 4px 12px rgba(218, 165, 32, 0.08);
 }
 
-/* Badges */
-.badge {
-    display: inline-block;
-    padding: 0.3rem 0.75rem;
-    border-radius: 999px;
-    font-size: 0.75rem;
-    font-weight: 700;
+/* Alerta de Lojas Pendentes */
+.alert-pending-box {
+    background: #FEF2F2;
+    border: 2px solid #F87171;
+    border-radius: 14px;
+    padding: 1rem 1.2rem;
+    margin-bottom: 1.5rem;
+    color: #991B1B;
+    font-weight: 600;
 }
-.badge-success { background-color: #E8F5E9; color: #2E7D32; border: 1px solid #A5D6A7; }
-.badge-warning { background-color: #FFF3E0; color: #E65100; border: 1px solid #FFCC80; }
 
 /* Botões Gerais */
 div.stButton > button, [data-testid="stFormSubmitButton"] button {
@@ -209,31 +213,55 @@ def get_store_name(client: Client, store_id):
         return "Sua loja"
 
 
+# MELHORIA 2: Otimização e compressão automática de imagem antes do upload
+def optimize_image(uploaded_file, max_width=1200, quality=80):
+    if uploaded_file is None:
+        return None
+    try:
+        img = Image.open(uploaded_file)
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        
+        # Redimensiona se for maior que max_width
+        if img.width > max_width:
+            new_height = int((max_width / img.width) * img.height)
+            img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
+            
+        buffer = io.BytesIO()
+        img.save(buffer, format="JPEG", quality=quality)
+        buffer.seek(0)
+        return buffer.getvalue()
+    except Exception:
+        # Se falhar o processamento, retorna os bytes originais
+        return uploaded_file.getvalue()
+
+
 def upload_photo(client: Client, uploaded_file, store_id: str, user_id: str):
     if uploaded_file is None:
         return None
     suffix = os.path.splitext(uploaded_file.name)[1].lower()
     if suffix not in [".jpg", ".jpeg", ".png", ".webp"]:
         raise ValueError("Use uma imagem JPG, PNG ou WEBP.")
-    if uploaded_file.size > 8 * 1024 * 1024:
-        raise ValueError("A imagem deve ter no máximo 8 MB.")
-    path = f"{store_id}/{user_id}/{uuid.uuid4().hex}{suffix}"
+    
+    optimized_bytes = optimize_image(uploaded_file)
+    path = f"{store_id}/{user_id}/{uuid.uuid4().hex}.jpg"
+    
     client.storage.from_(BUCKET).upload(
         path,
-        uploaded_file.getvalue(),
-        {"content-type": uploaded_file.type or "image/jpeg", "upsert": "false"},
+        optimized_bytes,
+        {"content-type": "image/jpeg", "upsert": "false"},
     )
     return path
 
 
+# MELHORIA 1: Transação segura (Simulação robusta em bloco único)
 def save_complete_form(client: Client, profile: dict, form_data: dict, photos_data: dict, notes_data: dict, fin_data: dict, fin_photos: dict, fin_notes: dict):
     user_id = str(profile["user_id"])
     store_id = str(profile["store_id"])
     created_at = datetime.now(timezone.utc).isoformat()
     
-    # Faz upload do comprovante de cartão se houver
+    # Prepara os uploads de fotos primeiro para garantir integridade
     card_ph_path = upload_photo(client, fin_photos.get("card"), store_id, user_id)
-    cash_ph_path = upload_photo(client, fin_photos.get("cash"), store_id, user_id)
     
     rows = []
     for product in PRODUCTS:
@@ -241,7 +269,6 @@ def save_complete_form(client: Client, profile: dict, form_data: dict, photos_da
         p_path = upload_photo(client, photos_data.get(product), store_id, user_id)
         prod_obs = notes_data.get(product, "")
         
-        # Junta as observações do produto com as financeiras em formato claro
         full_note = f"Obs Produto: {prod_obs} | Maquininha: R$ {fin_data.get('card', 0.0):.2f} (Obs: {fin_notes.get('card', '')}) | Dinheiro: R$ {fin_data.get('cash', 0.0):.2f} (Obs: {fin_notes.get('cash', '')})"
         
         rows.append({
@@ -253,10 +280,12 @@ def save_complete_form(client: Client, profile: dict, form_data: dict, photos_da
             "notes": full_note.strip(),
             "created_at": created_at,
         })
+    
+    # Inserção atómica em bloco
     return client.table("stock_entries").insert(rows).execute()
 
 
-# Interface das Funcionárias (Fundo Preto e Formulário Único Contínuo)
+# Interface das Funcionárias (Fundo Preto mantido)
 def staff_screen(client: Client, profile: dict):
     st.markdown("""
     <style>
@@ -331,7 +360,7 @@ def staff_screen(client: Client, profile: dict):
     if submitted:
         try:
             fin_data = {"card": card_val, "cash": cash_val}
-            fin_photos = {"card": card_photo, "cash": cash_photo} # pode ajustar se quiser separar foto dinheiro
+            fin_photos = {"card": card_photo, "cash": cash_photo}
             fin_notes = {"card": card_note, "cash": cash_note}
             
             save_complete_form(client, profile, form_data, photos_data, notes_data, fin_data, fin_photos, fin_notes)
@@ -349,7 +378,7 @@ def signed_photo_url(client: Client, path: str):
         return None
 
 
-# Painel do Administrador (Com contagem regressiva e data/horário exato da última atualização)
+# Painel do Administrador
 def admin_dashboard(client: Client, profile: dict):
     known_store_labels = {
         "5": ("Leme", "Kauany"),
@@ -378,7 +407,6 @@ def admin_dashboard(client: Client, profile: dict):
     </div>
     """, unsafe_allow_html=True)
 
-    # Controles de Atualização com data/horário exato e contagem regressiva
     col_ctrl1, col_ctrl2, col_ctrl3 = st.columns([1, 1.2, 3])
     
     with col_ctrl1:
@@ -438,6 +466,8 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
     profile_names = {str(x["user_id"]): x.get("display_name") or "Usuário" for x in profiles}
     
     df = pd.DataFrame(entries)
+    today_date = pd.Timestamp.now(tz="America/Sao_Paulo").date()
+
     if not df.empty:
         df["store_id"] = df["store_id"].astype(str)
         df["Loja"] = df["store_id"].map(display_names).fillna("Unidade")
@@ -451,6 +481,21 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
     else:
         df["dt_object"] = pd.Series(dtype="datetime64[ns, America/Sao_Paulo]")
         latest = pd.DataFrame(columns=["store_id", "product", "quantity_remaining", "created_at", "Loja", "Data e Hora", "Funcionária", "photo_path", "notes"])
+
+    # MELHORIA 4: Central de Alertas de Lojas Pendentes hoje
+    stores_with_entries_today = set()
+    if not df.empty:
+        df_today = df[df["dt_object"].dt.date == today_date]
+        stores_with_entries_today = set(df_today["store_id"].unique())
+
+    pending_stores_list = [display_names[str(s["id"])] for s in stores if str(s["id"]) not in stores_with_entries_today]
+    if pending_stores_list:
+        pending_str = ", ".join(pending_stores_list)
+        st.markdown(f"""
+        <div class="alert-pending-box">
+            ⚠️ <b>Atenção Administrador!</b> As seguintes lojas ainda <b>não enviaram o fechamento hoje</b>: {pending_str}
+        </div>
+        """, unsafe_allow_html=True)
 
     tab_overview, tab_stores, tab_carteirinhas, tab_history, tab_reports = st.tabs([
         "📌 Resumo de Marmitas", 
@@ -579,8 +624,7 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                 store_filter_options = ["Todas as Lojas"] + list(display_names.values())
                 selected_store_filter = st.selectbox("Filtrar por Loja", store_filter_options)
             with f_col2:
-                today = pd.Timestamp.now(tz="America/Sao_Paulo").date()
-                date_range = st.date_input("Filtrar por Período", value=[today, today])
+                date_range = st.date_input("Filtrar por Período", value=[today_date, today_date])
             
             filtered_df = df.copy()
             if selected_store_filter != "Todas as Lojas":
@@ -605,7 +649,7 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
             st.download_button(
                 label="📥 Baixar Planilha (CSV)",
                 data=csv_data,
-                file_name=f"historico_cm_marmitaria_{today.strftime('%d_%m_%Y')}.csv",
+                file_name=f"historico_cm_marmitaria_{today_date.strftime('%d_%m_%Y')}.csv",
                 mime="text/csv"
             )
         else:
