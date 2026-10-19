@@ -22,7 +22,7 @@ PRODUCTS = ["Marmitex pequena", "Marmitex grande", "Refrigerantes Peq", "Pudim",
 BUCKET = "stock-photos"
 USERNAME_EMAIL_DOMAIN = "estoque.invalid"
 
-# Estilização CSS Mantida (Cores específicas por setor)
+# Estilização CSS Mantida
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap');
@@ -305,12 +305,17 @@ def upload_photo(client: Client, uploaded_file, store_id: str, user_id: str):
         return None
 
 
-# SALVAMENTO USANDO APENAS OS NOMES ACEITOS DE PRODUTOS NO BANCO
+# SALVAMENTO SALVANDO A FOTO DA MAQUININHA DE FORMA SEGURA
 def save_form_data(client: Client, profile: dict, entry_type: str, form_data: dict, photos_data: dict, notes_data: dict, general_note: str, fin_data: dict = None, fin_photos: dict = None, fin_notes: dict = None):
     user_id = str(profile["user_id"])
     store_id = str(profile["store_id"])
     created_at = datetime.now(timezone.utc).isoformat()
     
+    # Salva a foto da maquininha se enviada
+    card_ph_path = None
+    if entry_type == "fechamento" and fin_photos and fin_photos.get("card"):
+        card_ph_path = upload_photo(client, fin_photos.get("card"), store_id, user_id)
+
     for product in PRODUCTS:
         try:
             qty = int(form_data.get(product, 0))
@@ -321,6 +326,10 @@ def save_form_data(client: Client, profile: dict, entry_type: str, form_data: di
         if photos_data and photos_data.get(product):
             p_path = upload_photo(client, photos_data.get(product), store_id, user_id)
         
+        # Se for fechamento e o produto for o primeiro, associa a foto da maquininha
+        if entry_type == "fechamento" and product == "Marmitex pequena" and card_ph_path:
+            p_path = card_ph_path
+
         prod_obs = notes_data.get(product, "").strip() if notes_data else ""
         
         note_parts = []
@@ -331,7 +340,6 @@ def save_form_data(client: Client, profile: dict, entry_type: str, form_data: di
         elif entry_type == "fechamento":
             note_parts.append("[FECHAMENTO]")
 
-        # Se for o produto principal no fechamento, embutimos as infos financeiras nas notas do primeiro item
         if entry_type == "fechamento" and product == "Marmitex pequena" and fin_data:
             card_v = float(fin_data.get("card", 0.0))
             cash_v = float(fin_data.get("cash", 0.0))
@@ -346,7 +354,6 @@ def save_form_data(client: Client, profile: dict, entry_type: str, form_data: di
 
         clean_note = " | ".join(note_parts)
         
-        # Salva utilizando estritamente os nomes válidos da tabela
         row = {
             "store_id": store_id,
             "user_id": user_id,
@@ -512,7 +519,6 @@ def signed_photo_url(client: Client, path: str):
         return None
 
 
-# LIMPEZA RIGOROSA DE OBSERVAÇÕES
 def clean_display_note(note_raw):
     if not note_raw or not isinstance(note_raw, str):
         return ""
@@ -527,7 +533,7 @@ def clean_display_note(note_raw):
 
 
 def extract_finance_info(st_data):
-    val_card, val_cash = 0.0, 0.0
+    val_card, val_cash, photo_path = 0.0, 0.0, None
     if not st_data.empty:
         import re
         for _, r in st_data.iterrows():
@@ -539,8 +545,9 @@ def extract_finance_info(st_data):
                     val_card = float(match_card.group(1))
                 if match_cash:
                     val_cash = float(match_cash.group(1))
+                photo_path = r.get("photo_path")
                 break
-    return val_card, val_cash
+    return val_card, val_cash, photo_path
 
 
 # Painel do Administrador
@@ -764,7 +771,7 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                     else:
                         st.info("Nenhuma atualização enviada hoje para esta loja.")
 
-    # 3. ABA DE FECHAMENTO FINAL
+    # 3. ABA DE FECHAMENTO FINAL (INCLUI MAQUININHA + BOTÃO DA FOTO DO COMPROVANTE)
     with tab_fechamento:
         df_fc_today = df[(df["notes"].str.contains("FECHAMENTO", na=False)) & (df["dt_object"].dt.date == today_date)] if not df.empty else pd.DataFrame()
         registered_stores_fc = set(df_fc_today["store_id"].unique()) if not df_fc_today.empty else set()
@@ -787,7 +794,7 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
             s_resp = staff_by_store[sid]
             st_data = df_fc_today[df_fc_today["store_id"] == sid] if not df_fc_today.empty else pd.DataFrame()
             
-            val_card, val_cash = extract_finance_info(st_data)
+            val_card, val_cash, card_photo_path = extract_finance_info(st_data)
             time_txt = "Pendente"
             
             if not st_data.empty:
@@ -812,8 +819,19 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                 
                 with st.expander(f"🔎 Ver Sobras e Detalhes do Fechamento - {s_name}", expanded=False):
                     if not st_data.empty:
-                        last_items = st_data.sort_values("created_at").groupby("product").last().reset_index()
+                        # Exibe a linha do Financeiro
+                        c_fin1, c_fin2 = st.columns([3, 1])
+                        c_fin1.write(f"💳 **Maquininha**: **R$ {val_card:.2f}** | 💵 **Dinheiro**: **R$ {val_cash:.2f}**")
                         
+                        if card_photo_path and str(card_photo_path).strip():
+                            url_card = signed_photo_url(client, card_photo_path)
+                            if url_card:
+                                with c_fin2.popover("📷 Ver Comprovante"):
+                                    st.image(url_card, caption="Comprovante da Maquininha", use_container_width=True)
+                        
+                        st.divider()
+                        
+                        last_items = st_data.sort_values("created_at").groupby("product").last().reset_index()
                         for _, r in last_items.iterrows():
                             p_clean = r['product']
                             if p_clean in PRODUCTS:
