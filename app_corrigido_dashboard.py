@@ -22,7 +22,7 @@ PRODUCTS = ["Marmitex pequena", "Marmitex grande", "Refrigerantes Peq", "Pudim",
 BUCKET = "stock-photos"
 USERNAME_EMAIL_DOMAIN = "estoque.invalid"
 
-# Estilização CSS Mantida (Com cores de cada setor e bloquinhos arredondados)
+# Estilização CSS Mantida (Cores específicas por setor)
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap');
@@ -305,7 +305,7 @@ def upload_photo(client: Client, uploaded_file, store_id: str, user_id: str):
         return None
 
 
-# SALVAMENTO 100% COMPATÍVEL COM AS REGRAS DO SUPABASE (Respeita as restrições dos nomes)
+# SALVAMENTO USANDO APENAS OS NOMES ACEITOS DE PRODUTOS NO BANCO
 def save_form_data(client: Client, profile: dict, entry_type: str, form_data: dict, photos_data: dict, notes_data: dict, general_note: str, fin_data: dict = None, fin_photos: dict = None, fin_notes: dict = None):
     user_id = str(profile["user_id"])
     store_id = str(profile["store_id"])
@@ -331,6 +331,14 @@ def save_form_data(client: Client, profile: dict, entry_type: str, form_data: di
         elif entry_type == "fechamento":
             note_parts.append("[FECHAMENTO]")
 
+        # Se for o produto principal no fechamento, embutimos as infos financeiras nas notas do primeiro item
+        if entry_type == "fechamento" and product == "Marmitex pequena" and fin_data:
+            card_v = float(fin_data.get("card", 0.0))
+            cash_v = float(fin_data.get("cash", 0.0))
+            c_obs = fin_notes.get("card", "").strip() if fin_notes else ""
+            m_obs = fin_notes.get("cash", "").strip() if fin_notes else ""
+            note_parts.append(f"[FINANCEIRO] Maquininha: R$ {card_v:.2f} ({c_obs}) | Dinheiro: R$ {cash_v:.2f} ({m_obs})")
+
         if prod_obs:
             note_parts.append(f"Obs Item: {prod_obs}")
         if general_note and general_note.strip():
@@ -338,61 +346,17 @@ def save_form_data(client: Client, profile: dict, entry_type: str, form_data: di
 
         clean_note = " | ".join(note_parts)
         
-        # Garante o formato de nome que o Supabase aceita
-        prod_name = f"FECHAMENTO - {product}" if entry_type == "fechamento" else product
-        if entry_type == "abertura":
-            prod_name = f"ABERTURA - {product}"
-            
+        # Salva utilizando estritamente os nomes válidos da tabela
         row = {
             "store_id": store_id,
             "user_id": user_id,
-            "product": prod_name,
+            "product": product,
             "quantity_remaining": qty,
             "photo_path": p_path,
             "notes": clean_note,
             "created_at": created_at,
         }
         client.table("stock_entries").insert(row).execute()
-        
-    # Insere as informações financeiras no Fechamento
-    if entry_type == "fechamento" and fin_data:
-        card_ph_path = None
-        if fin_photos and fin_photos.get("card"):
-            card_ph_path = upload_photo(client, fin_photos.get("card"), store_id, user_id)
-                
-        card_obs = fin_notes.get("card", "").strip() if fin_notes else ""
-        try:
-            card_val = float(fin_data.get("card", 0.0))
-        except (ValueError, TypeError):
-            card_val = 0.0
-            
-        row_card = {
-            "store_id": store_id,
-            "user_id": user_id,
-            "product": "FECHAMENTO - Maquininha",
-            "quantity_remaining": int(round(card_val)),
-            "photo_path": card_ph_path,
-            "notes": f"[FECHAMENTO] Valor R$ {card_val:.2f} | {card_obs}".strip(" |"),
-            "created_at": created_at,
-        }
-        client.table("stock_entries").insert(row_card).execute()
-        
-        cash_obs = fin_notes.get("cash", "").strip() if fin_notes else ""
-        try:
-            cash_val = float(fin_data.get("cash", 0.0))
-        except (ValueError, TypeError):
-            cash_val = 0.0
-            
-        row_cash = {
-            "store_id": store_id,
-            "user_id": user_id,
-            "product": "FECHAMENTO - Dinheiro",
-            "quantity_remaining": int(round(cash_val)),
-            "photo_path": None,
-            "notes": f"[FECHAMENTO] Valor R$ {cash_val:.2f} | {cash_obs}".strip(" |"),
-            "created_at": created_at,
-        }
-        client.table("stock_entries").insert(row_cash).execute()
 
 
 # Interface das Funcionárias
@@ -553,13 +517,30 @@ def clean_display_note(note_raw):
     if not note_raw or not isinstance(note_raw, str):
         return ""
     import re
-    # Remove restos de sujeira de dados antigos de Maquininha/Dinheiro
-    text = re.sub(r"Maquininha:.*", "", note_raw)
+    text = re.sub(r"\[FINANCEIRO\].*", "", note_raw)
+    text = re.sub(r"Maquininha:.*", "", text)
     text = re.sub(r"Dinheiro:.*", "", text)
     text = re.sub(r"\[Foto:.*\]", "", text)
     text = text.replace("[ACOMPANHAMENTO]", "").replace("[ABERTURA]", "").replace("[FECHAMENTO]", "")
     text = text.replace("Obs Item:", "").replace("Obs Geral:", "").strip(" |").strip()
     return text
+
+
+def extract_finance_info(st_data):
+    val_card, val_cash = 0.0, 0.0
+    if not st_data.empty:
+        import re
+        for _, r in st_data.iterrows():
+            n = str(r.get("notes") or "")
+            if "[FINANCEIRO]" in n:
+                match_card = re.search(r"Maquininha:\s*R\$\s*([\d\.]+)", n)
+                match_cash = re.search(r"Dinheiro:\s*R\$\s*([\d\.]+)", n)
+                if match_card:
+                    val_card = float(match_card.group(1))
+                if match_cash:
+                    val_cash = float(match_cash.group(1))
+                break
+    return val_card, val_cash
 
 
 # Painel do Administrador
@@ -643,7 +624,7 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
 
     # 1. ABA DE ABERTURA DO DIA
     with tab_abertura:
-        df_ab_today = df[(df["notes"].str.contains("ABERTURA", na=False) | df["product"].str.contains("ABERTURA", na=False)) & (df["dt_object"].dt.date == today_date)] if not df.empty else pd.DataFrame()
+        df_ab_today = df[(df["notes"].str.contains("ABERTURA", na=False)) & (df["dt_object"].dt.date == today_date)] if not df.empty else pd.DataFrame()
         registered_stores_ab = set(df_ab_today["store_id"].unique()) if not df_ab_today.empty else set()
         
         pending_ab = [display_names[str(s["id"])] for s in stores if str(s["id"]) not in registered_stores_ab]
@@ -668,8 +649,8 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
             
             if not st_data.empty:
                 time_txt = st_data.sort_values("created_at", ascending=False)["Hora"].iloc[0]
-                mg_row = st_data[st_data["product"].str.contains("Marmitex grande", na=False)]
-                mp_row = st_data[st_data["product"].str.contains("Marmitex pequena", na=False)]
+                mg_row = st_data[st_data["product"] == "Marmitex grande"]
+                mp_row = st_data[st_data["product"] == "Marmitex pequena"]
                 if not mg_row.empty:
                     m_g = int(mg_row.iloc[0]["quantity_remaining"])
                 if not mp_row.empty:
@@ -696,7 +677,7 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                     if not st_data.empty:
                         last_items = st_data.sort_values("created_at").groupby("product").last().reset_index()
                         for _, r in last_items.iterrows():
-                            p_clean = r['product'].replace("ABERTURA - ", "")
+                            p_clean = r['product']
                             if p_clean in PRODUCTS:
                                 obs_text = clean_display_note(r['notes'])
                                 obs_str = f" | *Obs:* {obs_text}" if obs_text else ""
@@ -713,10 +694,7 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
     # 2. ABA DE ACOMPANHAMENTO DO DIA
     with tab_meio_dia:
         if not df.empty:
-            df_md_today = df[
-                (df["dt_object"].dt.date == today_date) & 
-                (df["notes"].str.contains("ACOMPANHAMENTO", na=False) | (~df["product"].str.contains("FECHAMENTO", na=False) & ~df["product"].str.contains("ABERTURA", na=False) & ~df["notes"].str.contains("Maquininha", na=False)))
-            ]
+            df_md_today = df[(df["notes"].str.contains("ACOMPANHAMENTO", na=False)) & (df["dt_object"].dt.date == today_date)]
         else:
             df_md_today = pd.DataFrame()
 
@@ -744,8 +722,8 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
             
             if not st_data.empty:
                 time_txt = st_data.sort_values("created_at", ascending=False)["Hora"].iloc[0]
-                mg_row = st_data[st_data["product"].str.contains("Marmitex grande", na=False)]
-                mp_row = st_data[st_data["product"].str.contains("Marmitex pequena", na=False)]
+                mg_row = st_data[st_data["product"] == "Marmitex grande"]
+                mp_row = st_data[st_data["product"] == "Marmitex pequena"]
                 if not mg_row.empty:
                     m_g = int(mg_row.iloc[0]["quantity_remaining"])
                 if not mp_row.empty:
@@ -772,7 +750,7 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                     if not st_data.empty:
                         last_items = st_data.sort_values("created_at").groupby("product").last().reset_index()
                         for _, r in last_items.iterrows():
-                            p_clean = r['product'].replace("FECHAMENTO - ", "").replace("ABERTURA - ", "")
+                            p_clean = r['product']
                             if p_clean in PRODUCTS:
                                 obs_text = clean_display_note(r['notes'])
                                 obs_str = f" | *Obs:* {obs_text}" if obs_text else ""
@@ -786,9 +764,9 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                     else:
                         st.info("Nenhuma atualização enviada hoje para esta loja.")
 
-    # 3. ABA DE FECHAMENTO FINAL (EXIBIÇÃO LIMPA DOS ÚLTIMOS REGISTROS DO DIA)
+    # 3. ABA DE FECHAMENTO FINAL
     with tab_fechamento:
-        df_fc_today = df[(df["notes"].str.contains("FECHAMENTO", na=False) | df["product"].str.contains("FECHAMENTO", na=False)) & (df["dt_object"].dt.date == today_date)] if not df.empty else pd.DataFrame()
+        df_fc_today = df[(df["notes"].str.contains("FECHAMENTO", na=False)) & (df["dt_object"].dt.date == today_date)] if not df.empty else pd.DataFrame()
         registered_stores_fc = set(df_fc_today["store_id"].unique()) if not df_fc_today.empty else set()
         
         pending_fc = [display_names[str(s["id"])] for s in stores if str(s["id"]) not in registered_stores_fc]
@@ -809,16 +787,11 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
             s_resp = staff_by_store[sid]
             st_data = df_fc_today[df_fc_today["store_id"] == sid] if not df_fc_today.empty else pd.DataFrame()
             
-            val_card, val_cash, time_txt = 0.0, 0.0, "Pendente"
+            val_card, val_cash = extract_finance_info(st_data)
+            time_txt = "Pendente"
             
             if not st_data.empty:
                 time_txt = st_data.sort_values("created_at", ascending=False)["Hora"].iloc[0]
-                card_row = st_data[st_data["product"].str.contains("Maquininha", na=False)]
-                cash_row = st_data[st_data["product"].str.contains("Dinheiro", na=False)]
-                if not card_row.empty:
-                    val_card = float(card_row.iloc[0]["quantity_remaining"])
-                if not cash_row.empty:
-                    val_cash = float(cash_row.iloc[0]["quantity_remaining"])
 
             with cols[idx % 2]:
                 st.markdown(f"""
@@ -839,24 +812,14 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                 
                 with st.expander(f"🔎 Ver Sobras e Detalhes do Fechamento - {s_name}", expanded=False):
                     if not st_data.empty:
-                        # Pega unicamente o último lançamento do fechamento para evitar listas duplicadas
                         last_items = st_data.sort_values("created_at").groupby("product").last().reset_index()
                         
                         for _, r in last_items.iterrows():
-                            clean_p_name = r["product"].replace("FECHAMENTO - ", "")
-                            obs_text = clean_display_note(r['notes'])
-                            obs_str = f" | *Obs:* {obs_text}" if obs_text else ""
-                            c_item1, c_item2 = st.columns([3, 1])
-                            
-                            if "Maquininha" in clean_p_name or "Dinheiro" in clean_p_name:
-                                c_item1.write(f"💰 **{clean_p_name}**: R$ {r['quantity_remaining']:.2f}{obs_str}")
-                                if pd.notnull(r.get("photo_path")) and str(r["photo_path"]).strip():
-                                    url = signed_photo_url(client, r["photo_path"])
-                                    if url:
-                                        with c_item2.popover("📷 Ver Comprovante"):
-                                            st.image(url, use_container_width=True)
-                            else:
-                                c_item1.write(f"• **{clean_p_name}**: **{int(r['quantity_remaining'])} un.**{obs_str}")
+                            p_clean = r['product']
+                            if p_clean in PRODUCTS:
+                                obs_text = clean_display_note(r['notes'])
+                                obs_str = f" | *Obs:* {obs_text}" if obs_text else ""
+                                st.write(f"• **{p_clean}**: **{int(r['quantity_remaining'])} un.**{obs_str}")
                     else:
                         st.info("Fechamento ainda não enviado para esta loja hoje.")
 
