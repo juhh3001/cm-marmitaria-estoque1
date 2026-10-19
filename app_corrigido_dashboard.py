@@ -1,7 +1,9 @@
 import os
 import uuid
 import io
+import zoneinfo
 from datetime import datetime, timezone
+
 import pandas as pd
 import streamlit as st
 from PIL import Image
@@ -10,20 +12,19 @@ from supabase import create_client, Client
 
 # Configuração da Página
 st.set_page_config(
-    page_title="CM Marmitaria | Gestão Executiva",
+    page_title="CM Marmitaria | Controle de Estoque",
     page_icon="🍲",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-TZ_BR = zoneinfo.ZoneInfo("America/Sao_Paulo") if 'zoneinfo' in globals() else None
-# Se zoneinfo não estiver disponível globalmente no escopo do import, tratamos com datetime/timezone nativos.
+TZ_BR = zoneinfo.ZoneInfo("America/Sao_Paulo")
 PRODUCTS = ["Marmitex pequena", "Marmitex grande", "Refrigerantes Peq", "Pudim", "Refrigerante lata", "Água"]
 PRODUCT_PRICES = {"Marmitex pequena": 11.99, "Marmitex grande": 15.00, "Refrigerantes Peq": 4.00, "Pudim": 5.00, "Refrigerante lata": 7.00, "Água": 4.00}
 BUCKET = "stock-photos"
 USERNAME_EMAIL_DOMAIN = "estoque.invalid"
 
-# Estilização CSS Consolidada
+# Estilização CSS Mantida Intacta (Cores Amarelas/Pretas originais)
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap');
@@ -139,7 +140,7 @@ def sign_out():
             client.auth.sign_out()
     except Exception:
         pass
-    for key in ["supabase_user_id", "supabase_email", "supabase_access_token", "supabase_refresh_token", "profile", "supabase_client"]:
+    for key in ["supabase_user_id", "supabase_email", "supabase_access_token", "supabase_refresh_token", "profile", "supabase_client", "staff_flow_mode"]:
         st.session_state.pop(key, None)
     st.rerun()
 
@@ -213,7 +214,6 @@ def get_store_name(client: Client, store_id):
         return "Sua loja"
 
 
-# MELHORIA 2: Otimização e compressão automática de imagem antes do upload
 def optimize_image(uploaded_file, max_width=1200, quality=80):
     if uploaded_file is None:
         return None
@@ -221,18 +221,14 @@ def optimize_image(uploaded_file, max_width=1200, quality=80):
         img = Image.open(uploaded_file)
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
-        
-        # Redimensiona se for maior que max_width
         if img.width > max_width:
             new_height = int((max_width / img.width) * img.height)
             img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
-            
         buffer = io.BytesIO()
         img.save(buffer, format="JPEG", quality=quality)
         buffer.seek(0)
         return buffer.getvalue()
     except Exception:
-        # Se falhar o processamento, retorna os bytes originais
         return uploaded_file.getvalue()
 
 
@@ -254,22 +250,34 @@ def upload_photo(client: Client, uploaded_file, store_id: str, user_id: str):
     return path
 
 
-# MELHORIA 1: Transação segura (Simulação robusta em bloco único)
-def save_complete_form(client: Client, profile: dict, form_data: dict, photos_data: dict, notes_data: dict, fin_data: dict, fin_photos: dict, fin_notes: dict):
+def save_form_data(client: Client, profile: dict, entry_type: str, form_data: dict, photos_data: dict, notes_data: dict, general_note: str, fin_data: dict = None, fin_photos: dict = None, fin_notes: dict = None):
     user_id = str(profile["user_id"])
     store_id = str(profile["store_id"])
     created_at = datetime.now(timezone.utc).isoformat()
     
-    # Prepara os uploads de fotos primeiro para garantir integridade
-    card_ph_path = upload_photo(client, fin_photos.get("card"), store_id, user_id)
-    
+    # Se for fechamento, faz upload do comprovante da maquininha
+    card_ph_path = None
+    if fin_photos and fin_photos.get("card"):
+        card_ph_path = upload_photo(client, fin_photos.get("card"), store_id, user_id)
+        
     rows = []
     for product in PRODUCTS:
         qty = int(form_data.get(product, 0))
-        p_path = upload_photo(client, photos_data.get(product), store_id, user_id)
-        prod_obs = notes_data.get(product, "")
+        p_path = upload_photo(client, photos_data.get(product), store_id, user_id) if photos_data and photos_data.get(product) else None
+        prod_obs = notes_data.get(product, "").strip() if notes_data else ""
         
-        full_note = f"Obs Produto: {prod_obs} | Maquininha: R$ {fin_data.get('card', 0.0):.2f} (Obs: {fin_notes.get('card', '')}) | Dinheiro: R$ {fin_data.get('cash', 0.0):.2f} (Obs: {fin_notes.get('cash', '')})"
+        # Formatação de nota limpa sem bagunçar a planilha
+        note_parts = [f"[{entry_type.upper()}]"]
+        if prod_obs:
+            note_parts.append(f"Obs Item: {prod_obs}")
+        if general_note and general_note.strip():
+            note_parts.append(f"Obs Geral: {general_note.strip()}")
+            
+        if entry_type == "fechamento" and fin_data:
+            note_parts.append(f"Maquininha: R$ {fin_data.get('card', 0.0):.2f} (Obs: {fin_notes.get('card', '')}) [Foto: {card_ph_path or 'Sem foto'}]")
+            note_parts.append(f"Dinheiro: R$ {fin_data.get('cash', 0.0):.2f} (Obs: {fin_notes.get('cash', '')})")
+
+        full_note = " | ".join(note_parts)
         
         rows.append({
             "store_id": store_id,
@@ -277,15 +285,13 @@ def save_complete_form(client: Client, profile: dict, form_data: dict, photos_da
             "product": product,
             "quantity_remaining": qty,
             "photo_path": p_path,
-            "notes": full_note.strip(),
+            "notes": full_note,
             "created_at": created_at,
         })
-    
-    # Inserção atómica em bloco
     return client.table("stock_entries").insert(rows).execute()
 
 
-# Interface das Funcionárias (Fundo Preto mantido)
+# Interface das Funcionárias (Fundo Preto Mantido)
 def staff_screen(client: Client, profile: dict):
     st.markdown("""
     <style>
@@ -312,62 +318,109 @@ def staff_screen(client: Client, profile: dict):
     <div class="store-form-box" style="text-align: center;">
         <h1 style="color: #FFB300 !important; margin: 0;">🏠 CM MARMITARIA</h1>
         <h3>Olá, {display_name} · {store_name}</h3>
-        <p>Preencha abaixo o formulário completo de fechamento e estoque de hoje.</p>
+        <p>Escolha abaixo o tipo de lançamento que deseja realizar agora:</p>
     </div>
     """, unsafe_allow_html=True)
 
-    with st.form("single_staff_form"):
-        st.markdown("### 📦 1. Quantidades e Fotos dos Produtos")
+    # 3 Botões de escolha do Modo
+    m1, m2, m3 = st.columns(3)
+    with m1:
+        if st.button("☀️ 1. Estoque do Início do Dia", use_container_width=True):
+            st.session_state.staff_flow_mode = "abertura"
+    with m2:
+        if st.button("🔄 2. Registrar Estoque/Marmitas", use_container_width=True):
+            st.session_state.staff_flow_mode = "meio_dia"
+    with m3:
+        if st.button("🌙 3. Fechamento do Dia", use_container_width=True):
+            st.session_state.staff_flow_mode = "fechamento"
+
+    flow_mode = st.session_state.get("staff_flow_mode", "abertura")
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # MODO 1: ESTOQUE DO INÍCIO DO DIA (ABERTURA - COM FOTO, SEM DINHEIRO/MAQUININHA)
+    if flow_mode == "abertura":
+        st.markdown("### ☀️ 1. Contagem de Abertura (Início do Dia)")
+        st.caption("Registre o estoque inicial ao abrir a loja. Foto obrigatória por produto.")
         
-        form_data = {}
-        photos_data = {}
-        notes_data = {}
+        with st.form("form_abertura"):
+            form_data, photos_data, notes_data = {}, {}, {}
+            for product in PRODUCTS:
+                st.markdown(f"**🍲 {product}**")
+                c1, c2, c3 = st.columns([1, 1.5, 2])
+                with c1:
+                    form_data[product] = st.number_input("Quantidade Inicial", min_value=0, step=1, value=0, key=f"ab_{product}")
+                with c2:
+                    photos_data[product] = st.file_uploader("Foto do Item", type=["jpg", "jpeg", "png", "webp"], key=f"ab_ph_{product}")
+                with c3:
+                    notes_data[product] = st.text_input("Observação do Item", placeholder="Ex: Na geladeira...", key=f"ab_nt_{product}")
+                st.divider()
 
-        for product in PRODUCTS:
-            st.markdown(f"**🍲 {product}**")
-            c1, c2, c3 = st.columns([1, 1.5, 2])
-            
-            with c1:
-                form_data[product] = st.number_input(
-                    "Quantidade", min_value=0, step=1, value=0, key=f"q_{product}"
-                )
-            with c2:
-                photos_data[product] = st.file_uploader(
-                    "Foto", type=["jpg", "jpeg", "png", "webp"], key=f"photo_{product}"
-                )
-            with c3:
-                notes_data[product] = st.text_input(
-                    "Observação do item", placeholder=f"Obs sobre {product}...", key=f"note_{product}"
-                )
-            st.divider()
+            gen_note = st.text_area("Observação Geral do Início do Dia", placeholder="Alguma observação importante do início?")
+            if st.form_submit_button("✅ ENVIAR ESTOQUE INICIAL", use_container_width=True):
+                save_form_data(client, profile, "abertura", form_data, photos_data, notes_data, gen_note)
+                st.success("Estoque de abertura enviado com sucesso!")
+                st.rerun()
 
-        st.markdown("### 💰 2. Informações Financeiras")
+    # MODO 2: REGISTRAR ESTOQUE DO DIA (ACOMPANHAMENTO - COM FOTO, SEM DINHEIRO/MAQUININHA)
+    elif flow_mode == "meio_dia":
+        st.markdown("### 🔄 2. Registrar Estoque do Dia / Marmitas")
+        st.caption("Envie quantas vezes forem necessárias ao longo do dia com fotos atualizadas.")
         
-        fc1, fc2 = st.columns(2)
-        with fc1:
-            card_val = st.number_input("Valor final da maquininha (R$)", min_value=0.0, step=0.50, value=0.0)
-            card_photo = st.file_uploader("Foto do comprovante da maquininha", type=["jpg", "jpeg", "png", "webp"], key="card_ph")
-            card_note = st.text_input("Observação da Maquininha", placeholder="Ex: Cartão Visa/Master...")
-            
-        with fc2:
-            cash_val = st.number_input("Total em dinheiro em espécie (R$)", min_value=0.0, step=0.50, value=0.0)
-            cash_photo = st.file_uploader("Foto do envelope/dinheiro (opcional)", type=["jpg", "jpeg", "png", "webp"], key="cash_ph")
-            cash_note = st.text_input("Observação do Dinheiro", placeholder="Ex: Troco deixado na gaveta...")
+        with st.form("form_meio_dia"):
+            form_data, photos_data, notes_data = {}, {}, {}
+            for product in PRODUCTS:
+                st.markdown(f"**🍲 {product}**")
+                c1, c2, c3 = st.columns([1, 1.5, 2])
+                with c1:
+                    form_data[product] = st.number_input("Quantidade Atual", min_value=0, step=1, value=0, key=f"md_{product}")
+                with c2:
+                    photos_data[product] = st.file_uploader("Foto Atual do Item", type=["jpg", "jpeg", "png", "webp"], key=f"md_ph_{product}")
+                with c3:
+                    notes_data[product] = st.text_input("Observação do Item", placeholder="Ex: Preparando mais...", key=f"md_nt_{product}")
+                st.divider()
 
-        st.markdown("<br>", unsafe_allow_html=True)
-        submitted = st.form_submit_button("✅ Enviar Fechamento Completo", type="primary", use_container_width=True)
+            gen_note = st.text_area("Observação Geral do Lançamento", placeholder="Obs geral sobre o estoque de agora...")
+            if st.form_submit_button("✅ ENVIAR ATUALIZAÇÃO DE ESTOQUE", use_container_width=True):
+                save_form_data(client, profile, "acompanhamento", form_data, photos_data, notes_data, gen_note)
+                st.success("Lançamento de acompanhamento enviado com sucesso!")
+                st.rerun()
 
-    if submitted:
-        try:
-            fin_data = {"card": card_val, "cash": cash_val}
-            fin_photos = {"card": card_photo, "cash": cash_photo}
-            fin_notes = {"card": card_note, "cash": cash_note}
+    # MODO 3: FECHAMENTO DO DIA (SOBRAS SEM FOTO + MAQUININHA COM FOTO + DINHEIRO)
+    elif flow_mode == "fechamento":
+        st.markdown("### 🌙 3. Fechamento Final do Dia")
+        st.caption("Registre o que sobrou no final do dia (sem foto do estoque) e as informações financeiras.")
+        
+        with st.form("form_fechamento"):
+            st.markdown("#### 📦 1. Sobras de Estoque")
+            form_data, notes_data = {}, {}
+            for product in PRODUCTS:
+                st.markdown(f"**🍲 {product}**")
+                c1, c2 = st.columns([1, 3])
+                with c1:
+                    form_data[product] = st.number_input("Sobra Final", min_value=0, step=1, value=0, key=f"fc_{product}")
+                with c2:
+                    notes_data[product] = st.text_input("Observação da Sobra", placeholder="Ex: Guardado no freezer...", key=f"fc_nt_{product}")
+                st.divider()
+
+            st.markdown("#### 💰 2. Fechamento Financeiro da Loja")
+            fc1, fc2 = st.columns(2)
+            with fc1:
+                card_val = st.number_input("Valor Final Maquininha (R$)", min_value=0.0, step=0.50, value=0.0, key="card_val")
+                card_photo = st.file_uploader("Foto do Comprovante da Maquininha", type=["jpg", "jpeg", "png", "webp"], key="card_ph")
+                card_note = st.text_input("Obs Maquininha", placeholder="Ex: Cartões Visa/Master...", key="card_nt")
+            with fc2:
+                cash_val = st.number_input("Dinheiro em Espécie na Gaveta (R$)", min_value=0.0, step=0.50, value=0.0, key="cash_val")
+                cash_note = st.text_input("Obs Dinheiro / Pix", placeholder="Ex: Troco deixado / Pix pendente...", key="cash_nt")
+
+            gen_note = st.text_area("Observação Geral Final do Fechamento", placeholder="Algum recado final do dia?")
             
-            save_complete_form(client, profile, form_data, photos_data, notes_data, fin_data, fin_photos, fin_notes)
-            st.success("🎉 Fechamento enviado e salvo com sucesso no sistema!")
-            st.rerun()
-        except Exception as e:
-            st.error(f"Erro ao salvar o formulário: {e}")
+            if st.form_submit_button("✅ ENVIAR FECHAMENTO FINAL", use_container_width=True):
+                fin_data = {"card": card_val, "cash": cash_val}
+                fin_photos = {"card": card_photo}
+                fin_notes = {"card": card_note, "cash": cash_note}
+                save_form_data(client, profile, "fechamento", form_data, None, notes_data, gen_note, fin_data, fin_photos, fin_notes)
+                st.success("Fechamento final enviado com sucesso!")
+                st.rerun()
 
 
 def signed_photo_url(client: Client, path: str):
@@ -476,172 +529,80 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
         df["Data"] = df["dt_object"].dt.strftime("%d/%m/%Y")
         df["Hora e Minuto"] = df["dt_object"].dt.strftime("%H:%M:%S")
         df["Data e Hora"] = df["dt_object"].dt.strftime("%d/%m/%Y %H:%M:%S")
-        
-        latest = df.dropna(subset=["created_at"]).sort_values("created_at").groupby(["store_id", "product"], as_index=False).tail(1)
     else:
         df["dt_object"] = pd.Series(dtype="datetime64[ns, America/Sao_Paulo]")
-        latest = pd.DataFrame(columns=["store_id", "product", "quantity_remaining", "created_at", "Loja", "Data e Hora", "Funcionária", "photo_path", "notes"])
 
-    # MELHORIA 4: Central de Alertas de Lojas Pendentes hoje
-    stores_with_entries_today = set()
-    if not df.empty:
-        df_today = df[df["dt_object"].dt.date == today_date]
-        stores_with_entries_today = set(df_today["store_id"].unique())
-
-    pending_stores_list = [display_names[str(s["id"])] for s in stores if str(s["id"]) not in stores_with_entries_today]
-    if pending_stores_list:
-        pending_str = ", ".join(pending_stores_list)
-        st.markdown(f"""
-        <div class="alert-pending-box">
-            ⚠️ <b>Atenção Administrador!</b> As seguintes lojas ainda <b>não enviaram o fechamento hoje</b>: {pending_str}
-        </div>
-        """, unsafe_allow_html=True)
-
-    tab_overview, tab_stores, tab_carteirinhas, tab_history, tab_reports = st.tabs([
-        "📌 Resumo de Marmitas", 
-        "🏪 Gerenciar por Loja", 
-        "🏷️ Carteirinhas de Estoque", 
+    # 3 Visões no Painel do Administrador
+    tab_abertura, tab_meio_dia, tab_fechamento, tab_history, tab_reports = st.tabs([
+        "☀️ 1. Aberturas do Dia", 
+        "🔄 2. Acompanhamento (Meio do Dia)", 
+        "🌙 3. Fechamento Final", 
         "📜 Histórico & Planilha", 
         "📊 Relatório"
     ])
 
-    with tab_overview:
-        st.markdown("### 🍲 Resumo de Marmitas por Responsável")
-        cards = st.columns(3)
-        for idx, store in enumerate(stores):
-            sid = str(store["id"])
-            name = display_names[sid]
-            resp = staff_by_store[sid]
-            
-            store_latest = latest[latest["store_id"] == sid] if not latest.empty else latest
-            
-            m_pequena = 0
-            m_grande = 0
-            if not store_latest.empty:
-                p_eq = store_latest[store_latest["product"] == "Marmitex pequena"]
-                if not p_eq.empty:
-                    m_pequena = int(p_eq["quantity_remaining"].values[0])
-                p_gr = store_latest[store_latest["product"] == "Marmitex grande"]
-                if not p_gr.empty:
-                    m_grande = int(p_gr["quantity_remaining"].values[0])
+    with tab_abertura:
+        st.markdown("### ☀️ Registros de Abertura do Dia (Início)")
+        if not df.empty:
+            df_ab = df[df["notes"].str.contains("ABERTURA", na=False)]
+            if not df_ab.empty:
+                for store in stores:
+                    sid = str(store["id"])
+                    st_ab = df_ab[df_ab["store_id"] == sid]
+                    if not st_ab.empty:
+                        last_ab = st_ab.sort_values("created_at").groupby("product").last().reset_index()
+                        st.markdown(f"#### 🏪 {display_names[sid]} (Resp: **{staff_by_store[sid]}**)")
+                        for _, r in last_ab.iterrows():
+                            c1, c2, c3 = st.columns([2, 1, 2])
+                            c1.write(f"• **{r['product']}**: {int(r['quantity_remaining'])} un.")
+                            if pd.notnull(r.get("photo_path")) and str(r["photo_path"]).strip():
+                                url = signed_photo_url(client, r["photo_path"])
+                                if url:
+                                    c2.image(url, width=100)
+                            c3.caption(f"{r['notes']}")
+                        st.divider()
+            else:
+                st.info("Nenhuma abertura registrada hoje.")
 
-            with cards[idx % 3]:
-                st.markdown(f"""
-                <div class="store-box">
-                    <strong style="color: #2A1200; font-size: 1.1rem;">🏪 {name}</strong>
-                    <p style="color: #64748B; font-size: 0.85rem; margin: 0.2rem 0 0.75rem 0;">Responsável: <strong>{resp}</strong></p>
-                    <hr style="border: 1px solid #FFE082; margin: 0.5rem 0;">
-                    <p style="margin: 0.2rem 0; color: #2A1200;">• Marmitex Pequena: <strong>{m_pequena} un.</strong></p>
-                    <p style="margin: 0.2rem 0; color: #2A1200;">• Marmitex Grande: <strong>{m_grande} un.</strong></p>
-                </div>
-                """, unsafe_allow_html=True)
+    with tab_meio_dia:
+        st.markdown("### 🔄 Contagens Enviadas Durante o Dia")
+        if not df.empty:
+            df_md = df[df["notes"].str.contains("ACOMPANHAMENTO", na=False)]
+            if not df_md.empty:
+                st.dataframe(
+                    df_md[["Data e Hora", "Loja", "Funcionária", "product", "quantity_remaining", "notes"]].rename(columns={
+                        "product": "Produto", "quantity_remaining": "Quantidade", "notes": "Observação do Envio"
+                    }),
+                    use_container_width=True, hide_index=True
+                )
+            else:
+                st.info("Nenhuma contagem de meio de dia enviada hoje.")
 
-    with tab_stores:
-        st.markdown("### Detalhes por Loja e Exclusão de Registros")
-        options = {display_names[str(store["id"])]: str(store["id"]) for store in stores}
-        selected_label = st.selectbox("Escolha a Loja para gerenciar", list(options.keys()))
-        sid = options[selected_label]
-        store_latest = latest[latest["store_id"] == sid] if not latest.empty else latest
-
-        col_del_all, _ = st.columns([1, 2])
-        with col_del_all:
-            with st.popover("⚠️ Apagar TODOS os registros desta loja"):
-                st.warning("Tem certeza? Esta ação apagará o histórico e lançamentos desta loja.")
-                if st.button("Confirmar e Apagar Tudo", key=f"confirm_del_all_{sid}"):
-                    try:
-                        client.table("stock_entries").delete().eq("store_id", sid).execute()
-                        st.success("Registros apagados com sucesso!")
-                        st.rerun()
-                    except Exception:
-                        st.error("Erro ao apagar os registros.")
-
-        st.markdown("<hr>", unsafe_allow_html=True)
-
-        if not store_latest.empty:
-            for _, row in store_latest.iterrows():
-                c1, c2, c3, c4 = st.columns([2.5, 1, 1, 1])
-                c1.markdown(f"**{row['product']}** — <small>{row.get('notes', '')}</small>", unsafe_allow_html=True)
-                c2.markdown(f"**{int(row['quantity_remaining'])} un.**")
-                
-                path = row.get("photo_path")
-                url = signed_photo_url(client, path) if isinstance(path, str) and path.strip() else None
-                if url:
-                    with c3.popover("📷 Ver Foto"):
-                        st.image(url, use_container_width=True)
-                else:
-                    c3.caption("Sem foto")
-
-                row_id = row.get("id")
-                if c4.button("🗑️ Apagar", key=f"del_row_{row_id}"):
-                    try:
-                        client.table("stock_entries").delete().eq("id", row_id).execute()
-                        st.success("Item apagado!")
-                        st.rerun()
-                    except Exception:
-                        st.error("Erro ao apagar o item.")
-                st.divider()
-        else:
-            st.info("Nenhum lançamento ativo para esta loja.")
-
-    with tab_carteirinhas:
-        st.markdown("### 🏷️ Carteirinhas de Estoque Completo de Todas as Lojas")
-        for store in stores:
-            sid = str(store["id"])
-            name = display_names[sid]
-            resp = staff_by_store[sid]
-            store_latest = latest[latest["store_id"] == sid] if not latest.empty else pd.DataFrame()
-            
-            prod_qtys = {p: 0 for p in PRODUCTS}
-            if not store_latest.empty:
-                for _, r in store_latest.iterrows():
-                    prod_name = r["product"]
-                    if prod_name in prod_qtys:
-                        prod_qtys[prod_name] = int(r["quantity_remaining"])
-
-            st.markdown(f"""
-            <div class="store-box">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                    <strong style="color: #2A1200; font-size: 1.2rem;">🏪 {name}</strong>
-                    <span style="color: #64748B; font-size: 0.85rem;">Responsável: <strong>{resp}</strong></span>
-                </div>
-                <hr style="border: 1px solid #FFE082; margin: 0.5rem 0;">
-                <div style="display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 0.5rem;">
-                    <div>🍲 Pequena: <strong>{prod_qtys['Marmitex pequena']} un.</strong></div>
-                    <div>🍲 Grande: <strong>{prod_qtys['Marmitex grande']} un.</strong></div>
-                    <div>🥤 Refri Peq: <strong>{prod_qtys['Refrigerantes Peq']} un.</strong></div>
-                    <div>🍮 Pudim: <strong>{prod_qtys['Pudim']} un.</strong></div>
-                    <div>🥤 Lata: <strong>{prod_qtys['Refrigerante lata']} un.</strong></div>
-                    <div>💧 Água: <strong>{prod_qtys['Água']} un.</strong></div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+    with tab_fechamento:
+        st.markdown("### 🌙 Fechamento Final das Lojas")
+        if not df.empty:
+            df_fc = df[df["notes"].str.contains("FECHAMENTO", na=False)]
+            if not df_fc.empty:
+                for store in stores:
+                    sid = str(store["id"])
+                    st_fc = df_fc[df_fc["store_id"] == sid]
+                    if not st_fc.empty:
+                        last_fc = st_fc.sort_values("created_at").groupby("product").last().reset_index()
+                        st.markdown(f"#### 🏪 {display_names[sid]} (Resp: **{staff_by_store[sid]}**)")
+                        for _, r in last_fc.iterrows():
+                            st.write(f"• **{r['product']}**: Sobraram **{int(r['quantity_remaining'])} un.** | {r['notes']}")
+                        st.divider()
+            else:
+                st.info("Nenhum fechamento registrado hoje.")
 
     with tab_history:
-        st.markdown("### 📜 Histórico Geral e Planilha")
+        st.markdown("### 📜 Histórico Geral e Planilha Limpa")
         if not df.empty:
-            f_col1, f_col2 = st.columns([2, 2])
-            with f_col1:
-                store_filter_options = ["Todas as Lojas"] + list(display_names.values())
-                selected_store_filter = st.selectbox("Filtrar por Loja", store_filter_options)
-            with f_col2:
-                date_range = st.date_input("Filtrar por Período", value=[today_date, today_date])
-            
-            filtered_df = df.copy()
-            if selected_store_filter != "Todas as Lojas":
-                filtered_df = filtered_df[filtered_df["Loja"] == selected_store_filter]
-            if isinstance(date_range, (list, tuple)) and len(date_range) == 2:
-                start_date, end_date = date_range
-                filtered_df = filtered_df[
-                    (filtered_df["dt_object"].dt.date >= start_date) & 
-                    (filtered_df["dt_object"].dt.date <= end_date)
-                ]
-
-            st.markdown("<br>", unsafe_allow_html=True)
             display_cols = ["Data", "Hora e Minuto", "Loja", "Funcionária", "product", "quantity_remaining", "notes"]
-            renamed_df = filtered_df[display_cols].rename(columns={
+            renamed_df = df[display_cols].rename(columns={
                 "product": "Produto",
                 "quantity_remaining": "Quantidade Restante",
-                "notes": "Observações & Financeiro"
+                "notes": "Observações & Detalhes"
             })
             st.dataframe(renamed_df, use_container_width=True, hide_index=True)
             
@@ -652,13 +613,11 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                 file_name=f"historico_cm_marmitaria_{today_date.strftime('%d_%m_%Y')}.csv",
                 mime="text/csv"
             )
-        else:
-            st.info("Nenhum lançamento registrado no momento.")
 
     with tab_reports:
         st.markdown("### Visão por Produto")
-        if not latest.empty:
-            st.bar_chart(latest.groupby("product")["quantity_remaining"].sum())
+        if not df.empty:
+            st.bar_chart(df.groupby("product")["quantity_remaining"].sum())
 
 
 def main():
