@@ -20,7 +20,7 @@ PRODUCTS = ["Marmitex pequena", "Marmitex grande", "Refrigerante pequeno", "Refr
 BUCKET = "stock-photos"
 USERNAME_EMAIL_DOMAIN = "estoque.invalid"
 
-# CSS Profissional com Wallpaper de Fundo, Letras Brancas na Sidebar e Card de Data Ajustado
+# Estilização CSS Limpa, Espaçada e com Texto em Destaque
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800;900&display=swap');
@@ -29,30 +29,28 @@ html, body, [class*="css"] {
     font-family: 'Plus Jakarta Sans', sans-serif;
 }
 
-/* Fundo Geral da Aplicação com Wallpaper / Textura Elegante */
 .stApp {
     background-color: #F8FAFC !important;
-    background-image: radial-gradient(#E2E8F0 1px, transparent 1px) !important;
-    background-size: 20px 20px !important;
+    background-image: radial-gradient(#CBD5E1 1px, transparent 1px) !important;
+    background-size: 24px 24px !important;
 }
 
-/* Garante margem do topo para nada ser cortado */
 .block-container {
-    padding-top: 2.5rem !important;
+    padding-top: 2rem !important;
     padding-bottom: 3rem !important;
-    max-width: 1500px !important;
+    max-width: 1550px !important;
 }
 
-/* Menu Lateral Amarelo/Escuro com Texto 100% Branco */
+/* Sidebar com Fundo Escuro e Letras em Branco Puro */
 [data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #1E170A 0%, #2D210F 100%) !important;
+    background: linear-gradient(180deg, #1E170A 0%, #2A1F0D 100%) !important;
     border-right: 3px solid #FFCC00 !important;
 }
 [data-testid="stSidebar"] * {
-    color: #FFFFFF !important; /* LETRAS BRANCAS NO MENU ESQUERDO */
+    color: #FFFFFF !important;
 }
 
-/* Botões do Menu Lateral em Letras Brancas e Destaque Amarelo */
+/* Botões da Sidebar */
 [data-testid="stSidebar"] div.stButton > button {
     background-color: #3D2D14 !important;
     color: #FFFFFF !important;
@@ -69,131 +67,85 @@ html, body, [class*="css"] {
     color: #1E170A !important;
 }
 
-/* Logo no Canto Superior da Sidebar */
-.sidebar-logo-box {
-    text-align: center;
-    padding: 0.5rem 0 1rem 0;
-    border-bottom: 2px solid #FFCC00;
-    margin-bottom: 1rem;
-}
-.sidebar-logo-box h2 {
-    color: #FFCC00 !important;
-    font-weight: 900;
-    font-size: 1.5rem;
-    margin: 0;
-}
-.sidebar-logo-box p {
-    color: #FFFFFF !important;
-    font-size: 0.7rem;
-    font-weight: 800;
-    margin: 0;
-}
-
-/* Card Destacado da "Última Atualização" Ajustado Mais para Baixo */
-.update-card-box {
-    background: #FFFFFF;
-    border: 2px solid #FFCC00;
-    border-radius: 14px;
-    padding: 0.8rem 1.2rem;
-    text-align: right;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.06);
-    margin-top: 0.5rem; /* Afasta da faixa branca do topo */
-}
-.update-card-title {
-    font-size: 0.72rem;
-    font-weight: 800;
-    color: #854D0E;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-.update-card-value {
-    font-size: 0.95rem;
-    font-weight: 900;
-    color: #0F172A;
-    margin-top: 0.1rem;
-}
-
-/* Metric Cards do Topo */
-.metric-card-clean {
+/* Card Principal da Loja */
+.store-detail-card {
     background: #FFFFFF;
     border: 1px solid #CBD5E1;
-    border-left: 6px solid #FFCC00;
-    border-radius: 12px;
-    padding: 1rem 1.2rem;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+    border-radius: 16px;
+    padding: 1.25rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.04);
 }
-.metric-title-clean {
-    font-size: 0.78rem;
-    font-weight: 800;
-    color: #64748B;
-    text-transform: uppercase;
-}
-.metric-value-clean {
-    font-size: 1.6rem;
-    font-weight: 900;
-    color: #0F172A;
-    margin-top: 0.2rem;
-}
-
-/* Card das Lojas */
-.overview-store-card {
-    background: #FFFFFF;
-    border: 1px solid #CBD5E1;
-    border-radius: 14px;
-    padding: 1.1rem;
-    margin-bottom: 1.2rem;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.03);
-}
-.overview-store-header {
+.store-detail-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding-bottom: 0.6rem;
-    margin-bottom: 0.8rem;
+    padding-bottom: 0.75rem;
+    margin-bottom: 1rem;
     border-bottom: 2px solid #F1F5F9;
 }
-.overview-store-title {
-    font-size: 1.05rem;
-    font-weight: 800;
+.store-detail-title {
+    font-size: 1.2rem;
+    font-weight: 900;
     color: #0F172A;
 }
-.overview-store-resp {
+.store-detail-resp {
     background: #FEF3C7;
     color: #92400E;
-    font-size: 0.75rem;
+    font-size: 0.8rem;
     font-weight: 800;
-    padding: 0.2rem 0.6rem;
-    border-radius: 6px;
+    padding: 0.25rem 0.75rem;
+    border-radius: 8px;
 }
 
-.marmita-box {
+/* Tabela de Produtos Organizada em Linhas */
+.product-item-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 3fr;
+    align-items: center;
     background: #F8FAFC;
     border: 1px solid #E2E8F0;
-    border-radius: 8px;
-    padding: 0.5rem 0.8rem;
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 0.4rem;
+    border-radius: 10px;
+    padding: 0.6rem 0.9rem;
+    margin-bottom: 0.5rem;
+    gap: 0.8rem;
 }
-.marmita-label {
-    font-size: 0.85rem;
-    font-weight: 700;
-    color: #334155;
-}
-.marmita-qty {
-    font-size: 0.95rem;
+.product-item-name {
     font-weight: 800;
     color: #0F172A;
+    font-size: 0.9rem;
 }
-.last-update-tag {
-    font-size: 0.75rem;
-    color: #64748B;
-    font-weight: 600;
-    margin-top: 0.6rem;
-    text-align: right;
+.product-item-qty {
+    font-weight: 900;
+    color: #1E170A;
+    background: #FFE885;
+    padding: 0.2rem 0.5rem;
+    border-radius: 6px;
+    text-align: center;
+    font-size: 0.9rem;
+}
+.product-item-obs {
+    font-size: 0.82rem;
+    color: #475569;
+    font-style: italic;
 }
 
-/* Botões do Sistema */
+/* Painel de Fechamento Financeiro no Rodapé */
+.financial-footer-card {
+    background: #FEFCE8;
+    border: 1.5px solid #FDE047;
+    border-radius: 12px;
+    padding: 1rem;
+    margin-top: 1rem;
+}
+.financial-footer-title {
+    font-size: 0.9rem;
+    font-weight: 800;
+    color: #854D0E;
+    margin-bottom: 0.5rem;
+}
+
+/* Botões Padrão */
 div.stButton > button, [data-testid="stFormSubmitButton"] button {
     background: #FFCC00 !important;
     color: #1E170A !important;
@@ -355,7 +307,7 @@ def save_complete_form(client: Client, profile: dict, form_data: dict, photos_da
     return client.table("stock_entries").insert(rows).execute()
 
 
-# Interface das Funcionárias
+# Tela das Funcionárias
 def staff_screen(client: Client, profile: dict):
     store_id = str(profile.get("store_id", ""))
     store_name = get_store_name(client, store_id)
@@ -379,10 +331,10 @@ def staff_screen(client: Client, profile: dict):
             with c2:
                 photos_data[product] = st.file_uploader("Foto do item", type=["jpg", "jpeg", "png", "webp"], key=f"photo_{product}")
             with c3:
-                notes_data[product] = st.text_input("Observação", placeholder="Ex: No freezer...", key=f"note_{product}")
+                notes_data[product] = st.text_input("Observação do item", placeholder="Ex: No freezer...", key=f"note_{product}")
             st.divider()
 
-        st.markdown("### 💰 2. Fechamento Financeiro")
+        st.markdown("### 💰 2. Fechamento Financeiro da Loja")
         fc1, fc2 = st.columns(2)
         with fc1:
             card_val = st.number_input("Maquininha (R$)", min_value=0.0, step=0.50, value=0.0, key="card_val_in")
@@ -416,7 +368,7 @@ def signed_photo_url(client: Client, path: str):
         return None
 
 
-# Painel Administrador Limpo e Organizado
+# Painel Administrador
 def admin_dashboard(client: Client, profile: dict):
     known_store_labels = {
         "1": ("Matriz", "Bia"),
@@ -439,21 +391,20 @@ def admin_dashboard(client: Client, profile: dict):
 
     now_time = datetime.now(TZ_BR).strftime("%d/%m/%Y às %H:%M:%S")
 
-    # Cabeçalho com o Card de Atualização bem Visível e Abaixado
     c_top_l, c_top_r = st.columns([3, 1.3])
     with c_top_l:
         st.markdown("""
         <div>
             <h1 style='font-size: 2.2rem; font-weight: 900; color: #0F172A; margin:0;'>Painel Central de Gestão</h1>
-            <p style='font-size: 0.95rem; font-weight: 600; color: #64748B; margin-top: 0.2rem;'>Acompanhamento em tempo real do estoque das unidades</p>
+            <p style='font-size: 0.95rem; font-weight: 600; color: #64748B; margin-top: 0.2rem;'>Acompanhamento em tempo real das unidades</p>
         </div>
         """, unsafe_allow_html=True)
     
     with c_top_r:
         st.markdown(f"""
-        <div class="update-card-box">
-            <div class="update-card-title">🕒 Última Sincronização</div>
-            <div class="update-card-value">{now_time}</div>
+        <div style="background: #FFFFFF; border: 2px solid #FFCC00; border-radius: 12px; padding: 0.8rem 1rem; text-align: right; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
+            <div style="font-size: 0.72rem; font-weight: 800; color: #854D0E; text-transform: uppercase;">🕒 Última Sincronização</div>
+            <div style="font-size: 0.92rem; font-weight: 900; color: #0F172A; margin-top: 0.1rem;">{now_time}</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -469,7 +420,7 @@ def _load_and_render_admin_content(client, display_store_name):
         ).order("created_at", desc=True).limit(5000).execute().data or []
         profiles = client.table("profiles").select("user_id, display_name").execute().data or []
     except Exception:
-        st.error("Erro ao carregar os dados das lojas.")
+        st.error("Erro ao carregar os dados do banco.")
         return
 
     if not stores:
@@ -510,48 +461,48 @@ def _load_and_render_admin_content(client, display_store_name):
 
     total_financial = len(stores_with_entries_today)
 
-    # 4 Cards Métricas do Topo
+    # Cards Métricas do Topo
     m1, m2, m3, m4 = st.columns(4)
     with m1:
         st.markdown(f"""
-        <div class="metric-card-clean">
-            <div class="metric-title-clean">Lojas Cadastradas</div>
-            <div class="metric-value-clean">🏪 {total_stores}</div>
+        <div style="background: #FFFFFF; border: 1px solid #CBD5E1; border-left: 6px solid #FFCC00; border-radius: 12px; padding: 1rem 1.2rem; box-shadow: 0 2px 6px rgba(0,0,0,0.04);">
+            <div style="font-size: 0.78rem; font-weight: 800; color: #64748B; text-transform: uppercase;">Lojas Cadastradas</div>
+            <div style="font-size: 1.6rem; font-weight: 900; color: #0F172A; margin-top: 0.2rem;">🏪 {total_stores}</div>
         </div>
         """, unsafe_allow_html=True)
 
     with m2:
         st.markdown(f"""
-        <div class="metric-card-clean" style="border-left-color: #EF4444;">
-            <div class="metric-title-clean">Pendente de Registro</div>
-            <div class="metric-value-clean" style="color:#DC2626;">⚠️ {stores_pending_today}</div>
+        <div style="background: #FFFFFF; border: 1px solid #CBD5E1; border-left: 6px solid #EF4444; border-radius: 12px; padding: 1rem 1.2rem; box-shadow: 0 2px 6px rgba(0,0,0,0.04);">
+            <div style="font-size: 0.78rem; font-weight: 800; color: #64748B; text-transform: uppercase;">Pendente de Registro</div>
+            <div style="font-size: 1.6rem; font-weight: 900; color: #DC2626; margin-top: 0.2rem;">⚠️ {stores_pending_today}</div>
         </div>
         """, unsafe_allow_html=True)
 
     with m3:
         st.markdown(f"""
-        <div class="metric-card-clean" style="border-left-color: #3B82F6;">
-            <div class="metric-title-clean">Total de Marmitex</div>
-            <div class="metric-value-clean">📦 {total_marmitas}</div>
+        <div style="background: #FFFFFF; border: 1px solid #CBD5E1; border-left: 6px solid #3B82F6; border-radius: 12px; padding: 1rem 1.2rem; box-shadow: 0 2px 6px rgba(0,0,0,0.04);">
+            <div style="font-size: 0.78rem; font-weight: 800; color: #64748B; text-transform: uppercase;">Total de Marmitex</div>
+            <div style="font-size: 1.6rem; font-weight: 900; color: #0F172A; margin-top: 0.2rem;">📦 {total_marmitas}</div>
         </div>
         """, unsafe_allow_html=True)
 
     with m4:
         st.markdown(f"""
-        <div class="metric-card-clean" style="border-left-color: #10B981;">
-            <div class="metric-title-clean">Fechamentos Hoje</div>
-            <div class="metric-value-clean">💳 {total_financial}</div>
+        <div style="background: #FFFFFF; border: 1px solid #CBD5E1; border-left: 6px solid #10B981; border-radius: 12px; padding: 1rem 1.2rem; box-shadow: 0 2px 6px rgba(0,0,0,0.04);">
+            <div style="font-size: 0.78rem; font-weight: 800; color: #64748B; text-transform: uppercase;">Fechamentos Hoje</div>
+            <div style="font-size: 1.6rem; font-weight: 900; color: #0F172A; margin-top: 0.2rem;">💳 {total_financial}</div>
         </div>
         """, unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Navegação das Abas do Menu
     menu = st.session_state.get("menu_page", "lojas")
 
+    # VISÃO GERAL (APENAS MARMITAS)
     if menu in ["lojas", "inicio"]:
         st.markdown("### 📌 Visão Geral do Estoque de Marmitas")
-        st.caption("Apenas marmitas grandes e pequenas com a última hora de atualização.")
+        st.caption("Apenas marmitas grandes e pequenas com o horário do último envio.")
 
         grid_cols = st.columns(3)
         for idx, store in enumerate(stores):
@@ -562,7 +513,7 @@ def _load_and_render_admin_content(client, display_store_name):
 
             m_pequena = 0
             m_grande = 0
-            last_time_str = "Sem atualização hoje"
+            last_time_str = "Sem envio hoje"
 
             if not store_latest.empty:
                 p_eq = store_latest[store_latest["product"] == "Marmitex pequena"]
@@ -579,93 +530,89 @@ def _load_and_render_admin_content(client, display_store_name):
 
             with grid_cols[idx % 3]:
                 st.markdown(f"""
-                <div class="overview-store-card">
-                    <div class="overview-store-header">
-                        <span class="overview-store-title">🏪 {name}</span>
-                        <span class="overview-store-resp">Resp: {resp}</span>
+                <div style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 14px; padding: 1.1rem; margin-bottom: 1.2rem; box-shadow: 0 4px 8px rgba(0,0,0,0.03);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.6rem; margin-bottom: 0.8rem; border-bottom: 2px solid #F1F5F9;">
+                        <span style="font-size: 1.05rem; font-weight: 800; color: #0F172A;">🏪 {name}</span>
+                        <span style="background: #FEF3C7; color: #92400E; font-size: 0.75rem; font-weight: 800; padding: 0.2rem 0.6rem; border-radius: 6px;">Resp: {resp}</span>
                     </div>
-                    <div class="marmita-box">
-                        <span class="marmita-label">🍲 Marmitex Pequena</span>
-                        <span class="marmita-qty">{m_pequena} un.</span>
+                    <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 0.5rem 0.8rem; display: flex; justify-content: space-between; margin-bottom: 0.4rem;">
+                        <span style="font-size: 0.85rem; font-weight: 700; color: #334155;">🍲 Marmitex Pequena</span>
+                        <span style="font-size: 0.95rem; font-weight: 800; color: #0F172A;">{m_pequena} un.</span>
                     </div>
-                    <div class="marmita-box">
-                        <span class="marmita-label">🍲 Marmitex Grande</span>
-                        <span class="marmita-qty">{m_grande} un.</span>
+                    <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 0.5rem 0.8rem; display: flex; justify-content: space-between; margin-bottom: 0.4rem;">
+                        <span style="font-size: 0.85rem; font-weight: 700; color: #334155;">🍲 Marmitex Grande</span>
+                        <span style="font-size: 0.95rem; font-weight: 800; color: #0F172A;">{m_grande} un.</span>
                     </div>
-                    <div class="last-update-tag">🕒 Atualizado: {last_time_str}</div>
+                    <div style="font-size: 0.75rem; color: #64748B; font-weight: 600; margin-top: 0.6rem; text-align: right;">🕒 Atualizado: {last_time_str}</div>
                 </div>
                 """, unsafe_allow_html=True)
 
+    # VISÃO DETALHADA POR LOJA (PRODUTOS + FOTOS + OBSERVAÇÕES LADO A LADO + FECHAMENTO NO FINAL)
     elif menu == "detalhes":
-        st.markdown("### 🏪 Gerenciamento Completo das Lojas")
-        st.caption("Visão individual com refrigerantes, pudim, água e o fechamento financeiro do dia.")
+        st.markdown("### 🏪 Gerenciamento Detalhado por Unidade")
+        st.caption("Visão individual de cada item com foto e observação lado a lado, e fechamento financeiro no final.")
 
-        grid_cols = st.columns(2)
+        grid_cols = st.columns(1) # Visualização ampla em tela cheia para ficar perfeito
         for idx, store in enumerate(stores):
             sid = str(store["id"])
             name = display_names[sid]
             resp = staff_by_store[sid]
             store_latest = latest[latest["store_id"] == sid] if not latest.empty else pd.DataFrame()
 
-            with grid_cols[idx % 2]:
-                st.markdown(f"""
-                <div class="overview-store-card">
-                    <div class="overview-store-header">
-                        <span class="overview-store-title">🏪 {name}</span>
-                        <span class="overview-store-resp">Resp: {resp}</span>
+            st.markdown(f"""
+            <div class="store-detail-card">
+                <div class="store-detail-header">
+                    <span class="store-detail-title">🏪 {name}</span>
+                    <span class="store-detail-resp">Responsável: {resp}</span>
+                </div>
+            """, unsafe_allow_html=True)
+
+            if not store_latest.empty:
+                st.markdown("#### 📦 Estoque dos Itens")
+                for _, r in store_latest.iterrows():
+                    p_n = r["product"]
+                    qty_v = int(r["quantity_remaining"])
+                    path = r.get("photo_path")
+                    notes_raw = r.get("notes") or ""
+                    
+                    obs_item = notes_raw.split("||")[0].replace("Obs Item:", "").strip() if "||" in notes_raw else notes_raw
+                    url = signed_photo_url(client, path) if isinstance(path, str) and path.strip() else None
+
+                    col_p1, col_p2, col_p3, col_p4 = st.columns([2.5, 1, 1.2, 3])
+                    with col_p1:
+                        st.markdown(f"**🍲 {p_n}**")
+                    with col_p2:
+                        st.markdown(f"**{qty_v} un.**")
+                    with col_p3:
+                        if url:
+                            with st.popover("📷 Ver Foto"):
+                                st.image(url, use_container_width=True)
+                        else:
+                            st.caption("Sem foto")
+                    with col_p4:
+                        st.caption(f"📝 {obs_item if obs_item else 'Sem observação'}")
+                    st.markdown("<hr style='margin: 0.4rem 0; border: 0.5px solid #F1F5F9;'>", unsafe_allow_html=True)
+
+                # FECHAMENTO FINANCEIRO DA LOJA NO FINAL
+                first_note = store_latest["notes"].iloc[0] if not store_latest.empty else ""
+                if "[FECHAMENTO FINANCEIRO" in first_note:
+                    fin_part = first_note.split("[FECHAMENTO FINANCEIRO DA LOJA] |")[1]
+                    st.markdown(f"""
+                    <div class="financial-footer-card">
+                        <div class="financial-footer-title">💰 FECHAMENTO FINANCEIRO DA LOJA</div>
+                        <div style="font-size: 0.88rem; color: #1E170A; font-weight: 700;">{fin_part}</div>
                     </div>
-                """, unsafe_allow_html=True)
+                    """, unsafe_allow_html=True)
 
-                if not store_latest.empty:
-                    for _, r in store_latest.iterrows():
-                        p_n = r["product"]
-                        qty_v = int(r["quantity_remaining"])
-                        st.markdown(f"""
-                        <div class="marmita-box">
-                            <span class="marmita-label">📦 {p_n}</span>
-                            <span class="marmita-qty">{qty_v} un.</span>
-                        </div>
-                        """, unsafe_allow_html=True)
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button(f"🗑️ Zerar registros da {name}", key=f"del_st_{sid}"):
+                    client.table("stock_entries").delete().eq("store_id", sid).execute()
+                    st.success("Registros zerados com sucesso!")
+                    st.rerun()
+            else:
+                st.info("Nenhum lançamento registrado para esta loja hoje.")
 
-                    with st.expander("🔎 Ver Fotos e Fechamento Financeiro"):
-                        for _, r in store_latest.iterrows():
-                            p_n = r["product"]
-                            path = r.get("photo_path")
-                            notes_raw = r.get("notes") or ""
-                            
-                            obs_item = notes_raw.split("||")[0].replace("Obs Item:", "").strip() if "||" in notes_raw else notes_raw
-                            url = signed_photo_url(client, path) if isinstance(path, str) and path.strip() else None
-                            
-                            st.write(f"• **{p_n}**: {obs_item}")
-                            if url:
-                                st.image(url, width=150)
-                            st.divider()
-
-                        first_note = store_latest["notes"].iloc[0] if not store_latest.empty else ""
-                        if "[FECHAMENTO FINANCEIRO" in first_note:
-                            fin_part = first_note.split("[FECHAMENTO FINANCEIRO DA LOJA] |")[1]
-                            st.info(f"💰 **Financeiro:** {fin_part}")
-
-                        if st.button(f"🗑️ Zerar registros da {name}", key=f"del_st_{sid}"):
-                            client.table("stock_entries").delete().eq("store_id", sid).execute()
-                            st.success("Registros zerados!")
-                            st.rerun()
-                else:
-                    st.info("Nenhum lançamento ativo para esta loja.")
-
-                st.markdown("</div>", unsafe_allow_html=True)
-
-    elif menu == "produtos":
-        st.markdown("### 📦 Inventário Geral por Produto")
-        if not latest.empty:
-            st.dataframe(
-                latest[["Loja", "product", "quantity_remaining"]].rename(columns={
-                    "Loja": "Unidade Comercial", "product": "Produto", "quantity_remaining": "Estoque Atual"
-                }),
-                use_container_width=True, hide_index=True
-            )
-        else:
-            st.info("Nenhum produto cadastrado.")
+            st.markdown("</div>", unsafe_allow_html=True)
 
     elif menu == "financeiro":
         st.markdown("### 💳 Demonstrativo Financeiro das Lojas")
@@ -673,7 +620,7 @@ def _load_and_render_admin_content(client, display_store_name):
             fin_entries = df[df["notes"].str.contains("FECHAMENTO FINANCEIRO", na=False)]
             if not fin_entries.empty:
                 for _, r in fin_entries.groupby("store_id").first().iterrows():
-                    st.markdown(f"#### 🏪 {r['Loja']} (Resp: {r['Funcionária']})")
+                    st.markdown(f"#### 🏪 {r['Loja']} (Resp: **{r['Funcionária']}**)")
                     notes = r["notes"]
                     fin_part = notes.split("[FECHAMENTO FINANCEIRO DA LOJA] |")[1] if "[FECHAMENTO FINANCEIRO DA LOJA] |" in notes else notes
                     st.success(f"💰 {fin_part}")
@@ -732,23 +679,20 @@ def main():
     st.session_state.profile = profile
     display_name = profile.get("display_name") or "Usuário"
     
-    # Sidebar Estilizada com Logo e Textos em Branco Puro
+    # Sidebar Estilizada com Navegação sem a aba "Produtos"
     with st.sidebar:
         st.markdown("""
-        <div class="sidebar-logo-box">
-            <h2>CM MARMITARIA</h2>
-            <p>QUALIDADE | SABOR | TRADIÇÃO</p>
+        <div style="text-align: center; padding: 0.5rem 0 1rem 0; border-bottom: 2px solid #FFCC00; margin-bottom: 1rem;">
+            <h2 style="color: #FFCC00 !important; font-weight: 900; font-size: 1.5rem; margin: 0;">CM MARMITARIA</h2>
+            <p style="color: #FFFFFF !important; font-size: 0.7rem; font-weight: 800; margin: 0;">QUALIDADE | SABOR | TRADIÇÃO</p>
         </div>
         """, unsafe_allow_html=True)
         
         if st.button("📌 Visão Geral (Marmitas)", use_container_width=True):
             st.session_state.menu_page = "lojas"
             st.rerun()
-        if st.button("🏪 Lojas (Detalhes)", use_container_width=True):
+        if st.button("🏪 Lojas (Detalhes & Fotos)", use_container_width=True):
             st.session_state.menu_page = "detalhes"
-            st.rerun()
-        if st.button("📦 Produtos", use_container_width=True):
-            st.session_state.menu_page = "produtos"
             st.rerun()
         if st.button("💳 Financeiro", use_container_width=True):
             st.session_state.menu_page = "financeiro"
