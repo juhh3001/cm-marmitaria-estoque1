@@ -66,28 +66,6 @@ html, body, [class*="css"] {
     margin-top: 0.25rem;
 }
 
-/* Cartões de Métricas */
-.kpi-card {
-    background: #FFFFFF;
-    border: 2px solid #FFD54F;
-    border-radius: 16px;
-    padding: 1rem 1.25rem;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.03);
-}
-.kpi-title {
-    font-size: 0.8rem;
-    color: #8C4A00;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-.kpi-value {
-    font-size: 1.7rem;
-    font-weight: 800;
-    color: #2A1200;
-    margin-top: 0.2rem;
-}
-
 /* Cartões das Lojas */
 .store-box {
     background: #FFFFFF;
@@ -157,7 +135,7 @@ def sign_out():
             client.auth.sign_out()
     except Exception:
         pass
-    for key in ["supabase_user_id", "supabase_email", "supabase_access_token", "supabase_refresh_token", "profile", "supabase_client", "staff_step", "form_qtys", "form_photos", "form_fin"]:
+    for key in ["supabase_user_id", "supabase_email", "supabase_access_token", "supabase_refresh_token", "profile", "supabase_client"]:
         st.session_state.pop(key, None)
     st.rerun()
 
@@ -248,30 +226,37 @@ def upload_photo(client: Client, uploaded_file, store_id: str, user_id: str):
     return path
 
 
-def save_complete_record(client: Client, profile: dict, quantities: dict, photos: dict, fin_data: dict):
+def save_complete_form(client: Client, profile: dict, form_data: dict, photos_data: dict, notes_data: dict, fin_data: dict, fin_photos: dict, fin_notes: dict):
     user_id = str(profile["user_id"])
     store_id = str(profile["store_id"])
     created_at = datetime.now(timezone.utc).isoformat()
     
-    card_receipt_path = upload_photo(client, fin_data.get("card_photo"), store_id, user_id)
+    # Faz upload do comprovante de cartão se houver
+    card_ph_path = upload_photo(client, fin_photos.get("card"), store_id, user_id)
+    cash_ph_path = upload_photo(client, fin_photos.get("cash"), store_id, user_id)
     
     rows = []
     for product in PRODUCTS:
-        qty = int(quantities.get(product, 0))
-        p_path = upload_photo(client, photos.get(product), store_id, user_id)
+        qty = int(form_data.get(product, 0))
+        p_path = upload_photo(client, photos_data.get(product), store_id, user_id)
+        prod_obs = notes_data.get(product, "")
+        
+        # Junta as observações do produto com as financeiras em formato claro
+        full_note = f"Obs Produto: {prod_obs} | Maquininha: R$ {fin_data.get('card', 0.0):.2f} (Obs: {fin_notes.get('card', '')}) | Dinheiro: R$ {fin_data.get('cash', 0.0):.2f} (Obs: {fin_notes.get('cash', '')})"
+        
         rows.append({
             "store_id": store_id,
             "user_id": user_id,
             "product": product,
             "quantity_remaining": qty,
             "photo_path": p_path,
-            "notes": f"Maquininha: R$ {fin_data.get('card_amount', 0.0):.2f} | Dinheiro: R$ {fin_data.get('cash_amount', 0.0):.2f}",
+            "notes": full_note.strip(),
             "created_at": created_at,
         })
     return client.table("stock_entries").insert(rows).execute()
 
 
-# Interface das Funcionárias (Fundo Preto e 4 Telas)
+# Interface das Funcionárias (Fundo Preto e Formulário Único Contínuo)
 def staff_screen(client: Client, profile: dict):
     st.markdown("""
     <style>
@@ -281,9 +266,12 @@ def staff_screen(client: Client, profile: dict):
     h1, h2, h3, h4, p, label, span, div {
         color: #FFFFFF !important;
     }
-    .store-box {
+    .store-form-box {
         background: #1A1A1A !important;
         border: 2px solid #FFB300 !important;
+        padding: 1.5rem;
+        border-radius: 16px;
+        margin-bottom: 1.5rem;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -291,114 +279,66 @@ def staff_screen(client: Client, profile: dict):
     store_name = get_store_name(client, profile.get("store_id"))
     display_name = profile.get("display_name") or "Funcionária"
 
-    if "staff_step" not in st.session_state:
-        st.session_state.staff_step = 1
-    if "form_qtys" not in st.session_state:
-        st.session_state.form_qtys = {p: 0 for p in PRODUCTS}
-    if "form_photos" not in st.session_state:
-        st.session_state.form_photos = {p: None for p in PRODUCTS}
-    if "form_fin" not in st.session_state:
-        st.session_state.form_fin = {"card_amount": 0.0, "card_photo": None, "cash_amount": 0.0}
+    st.markdown(f"""
+    <div class="store-form-box" style="text-align: center;">
+        <h1 style="color: #FFB300 !important; margin: 0;">🏠 CM MARMITARIA</h1>
+        <h3>Olá, {display_name} · {store_name}</h3>
+        <p>Preencha abaixo o formulário completo de fechamento e estoque de hoje.</p>
+    </div>
+    """, unsafe_allow_html=True)
 
-    step = st.session_state.staff_step
-
-    if step == 1:
-        st.markdown(f"""
-        <div style="background: #1A1A1A; padding: 1.5rem; border-radius: 16px; border: 2px solid #FFB300; text-align: center; margin-bottom: 1.5rem;">
-            <h1 style="color: #FFB300 !important;">🏠 CM MARMITARIA</h1>
-            <h3>Olá, {display_name} ({store_name})</h3>
-            <p>Seja bem-vinda ao sistema de fechamento e controle diário.</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-        if st.button("🚀 Fazer Registro de Hoje", use_container_width=True, type="primary"):
-            st.session_state.staff_step = 2
-            st.rerun()
-
-    elif step == 2:
-        st.markdown(f"<h2>📦 Tela 2/4: Estoque · {store_name}</h2>", unsafe_allow_html=True)
-        st.info("Ajuste a quantidade restante de cada produto. Foto opcional.")
+    with st.form("single_staff_form"):
+        st.markdown("### 📦 1. Quantidades e Fotos dos Produtos")
+        
+        form_data = {}
+        photos_data = {}
+        notes_data = {}
 
         for product in PRODUCTS:
-            st.markdown(f"**{product}**")
-            col_btn1, col_val, col_btn2, col_foto = st.columns([1, 1.5, 1, 3])
+            st.markdown(f"**🍲 {product}**")
+            c1, c2, c3 = st.columns([1, 1.5, 2])
             
-            if col_btn1.button("➖", key=f"minus_{product}"):
-                if st.session_state.form_qtys[product] > 0:
-                    st.session_state.form_qtys[product] -= 1
-                    st.rerun()
-            
-            col_val.markdown(f"<div style='text-align: center; font-size: 1.2rem; font-weight: bold; padding-top: 5px;'>{st.session_state.form_qtys[product]} un.</div>", unsafe_allow_html=True)
-            
-            if col_btn2.button("➕", key=f"plus_{product}"):
-                st.session_state.form_qtys[product] += 1
-                st.rerun()
-
-            with col_foto.expander("📷 Foto opcional"):
-                p_up = st.file_uploader(f"Foto {product}", type=["jpg", "jpeg", "png", "webp"], key=f"ph_{product}", label_visibility="collapsed")
-                if p_up:
-                    st.session_state.form_photos[product] = p_up
-
+            with c1:
+                form_data[product] = st.number_input(
+                    "Quantidade", min_value=0, step=1, value=0, key=f"q_{product}"
+                )
+            with c2:
+                photos_data[product] = st.file_uploader(
+                    "Foto", type=["jpg", "jpeg", "png", "webp"], key=f"photo_{product}"
+                )
+            with c3:
+                notes_data[product] = st.text_input(
+                    "Observação do item", placeholder=f"Obs sobre {product}...", key=f"note_{product}"
+                )
             st.divider()
 
-        c_vol, c_av = st.columns(2)
-        if c_vol.button("⬅️ Voltar", use_container_width=True):
-            st.session_state.staff_step = 1
-            st.rerun()
-        if c_av.button("Avançar para o Financeiro ➡️", use_container_width=True, type="primary"):
-            st.session_state.staff_step = 3
-            st.rerun()
-
-    elif step == 3:
-        st.markdown(f"<h2>💳 Tela 3/4: Informações Financeiras</h2>", unsafe_allow_html=True)
+        st.markdown("### 💰 2. Informações Financeiras")
         
-        card_amt = st.number_input("Valor final da maquininha (R$)", min_value=0.0, step=0.50, value=float(st.session_state.form_fin["card_amount"]))
-        card_ph = st.file_uploader("Anexar foto do comprovante da maquininha (opcional)", type=["jpg", "jpeg", "png", "webp"])
-        cash_amt = st.number_input("Total em dinheiro em espécie (R$)", min_value=0.0, step=0.50, value=float(st.session_state.form_fin["cash_amount"]))
+        fc1, fc2 = st.columns(2)
+        with fc1:
+            card_val = st.number_input("Valor final da maquininha (R$)", min_value=0.0, step=0.50, value=0.0)
+            card_photo = st.file_uploader("Foto do comprovante da maquininha", type=["jpg", "jpeg", "png", "webp"], key="card_ph")
+            card_note = st.text_input("Observação da Maquininha", placeholder="Ex: Cartão Visa/Master...")
+            
+        with fc2:
+            cash_val = st.number_input("Total em dinheiro em espécie (R$)", min_value=0.0, step=0.50, value=0.0)
+            cash_photo = st.file_uploader("Foto do envelope/dinheiro (opcional)", type=["jpg", "jpeg", "png", "webp"], key="cash_ph")
+            cash_note = st.text_input("Observação do Dinheiro", placeholder="Ex: Troco deixado na gaveta...")
 
-        st.session_state.form_fin["card_amount"] = card_amt
-        if card_ph:
-            st.session_state.form_fin["card_photo"] = card_ph
-        st.session_state.form_fin["cash_amount"] = cash_amt
+        st.markdown("<br>", unsafe_allow_html=True)
+        submitted = st.form_submit_button("✅ Enviar Fechamento Completo", type="primary", use_container_width=True)
 
-        c_vol, c_av = st.columns(2)
-        if c_vol.button("⬅️ Voltar", use_container_width=True):
-            st.session_state.staff_step = 2
+    if submitted:
+        try:
+            fin_data = {"card": card_val, "cash": cash_val}
+            fin_photos = {"card": card_photo, "cash": cash_photo} # pode ajustar se quiser separar foto dinheiro
+            fin_notes = {"card": card_note, "cash": cash_note}
+            
+            save_complete_form(client, profile, form_data, photos_data, notes_data, fin_data, fin_photos, fin_notes)
+            st.success("🎉 Fechamento enviado e salvo com sucesso no sistema!")
             st.rerun()
-        if c_av.button("Ir para Conferência ➡️", use_container_width=True, type="primary"):
-            st.session_state.staff_step = 4
-            st.rerun()
-
-    elif step == 4:
-        st.markdown(f"<h2>📋 Tela 4/4: Conferência Geral</h2>", unsafe_allow_html=True)
-        st.markdown("Confira se os dados abaixo estão corretos antes de enviar:")
-
-        st.markdown("### 📦 Estoque Informado:")
-        for prod, q in st.session_state.form_qtys.items():
-            st.write(f"- **{prod}**: {q} un.")
-
-        st.markdown("### 💰 Financeiro Informado:")
-        st.write(f"- Maquininha: **R$ {st.session_state.form_fin['card_amount']:.2f}**")
-        st.write(f"- Dinheiro em Espécie: **R$ {st.session_state.form_fin['cash_amount']:.2f}**")
-
-        st.divider()
-
-        c_vol, c_env = st.columns(2)
-        if c_vol.button("⬅️ Voltar e Editar", use_container_width=True):
-            st.session_state.staff_step = 3
-            st.rerun()
-        
-        if c_env.button("✅ Finalizar e Enviar", use_container_width=True, type="primary"):
-            try:
-                save_complete_record(client, profile, st.session_state.form_qtys, st.session_state.form_photos, st.session_state.form_fin)
-                st.success("🎉 Lançamento enviado e salvo com sucesso!")
-                st.session_state.staff_step = 1
-                st.session_state.form_qtys = {p: 0 for p in PRODUCTS}
-                st.session_state.form_photos = {p: None for p in PRODUCTS}
-                st.session_state.form_fin = {"card_amount": 0.0, "card_photo": None, "cash_amount": 0.0}
-                st.rerun()
-            except Exception as e:
-                st.error(f"Erro ao salvar: {e}")
+        except Exception as e:
+            st.error(f"Erro ao salvar o formulário: {e}")
 
 
 def signed_photo_url(client: Client, path: str):
@@ -409,7 +349,7 @@ def signed_photo_url(client: Client, path: str):
         return None
 
 
-# Painel do Administrador (Com contagem regressiva e atualização de 5 min)
+# Painel do Administrador (Com contagem regressiva e data/horário exato da última atualização)
 def admin_dashboard(client: Client, profile: dict):
     known_store_labels = {
         "5": ("Leme", "Kauany"),
@@ -438,8 +378,8 @@ def admin_dashboard(client: Client, profile: dict):
     </div>
     """, unsafe_allow_html=True)
 
-    # Controles de Atualização do Admin com contagem regressiva
-    col_ctrl1, col_ctrl2, col_ctrl3 = st.columns([1, 1.2, 2.5])
+    # Controles de Atualização com data/horário exato e contagem regressiva
+    col_ctrl1, col_ctrl2, col_ctrl3 = st.columns([1, 1.2, 3])
     
     with col_ctrl1:
         if st.button("🔄 Atualizar"):
@@ -452,11 +392,10 @@ def admin_dashboard(client: Client, profile: dict):
     if "last_admin_update" not in st.session_state:
         st.session_state.last_admin_update = datetime.now(timezone.utc).astimezone()
 
-    last_time_formatted = st.session_state.last_admin_update.strftime("%H:%M:%S")
+    last_time_formatted = st.session_state.last_admin_update.strftime("%d/%m/%Y às %H:%M:%S")
 
     with col_ctrl3:
         if auto_refresh:
-            # Exibe contagem regressiva baseada no tempo atual usando st.fragment com run_every=1
             @st.fragment(run_every=1)
             def countdown_display():
                 now_ts = datetime.now(timezone.utc).timestamp()
@@ -467,12 +406,12 @@ def admin_dashboard(client: Client, profile: dict):
                 remaining = int(st.session_state.next_refresh_ts - now_ts)
                 mins = remaining // 60
                 secs = remaining % 60
-                st.markdown(f"<p style='margin: 0; font-size: 0.9rem; font-weight: 600; color: #8C4A00;'>⏳ Próxima att em: <b>{mins:02d}:{secs:02d}</b> | 🕒 Última: {last_time_formatted}</p>", unsafe_allow_html=True)
+                st.markdown(f"<p style='margin: 0; font-size: 0.85rem; font-weight: 600; color: #8C4A00;'>⏳ Próxima att em: <b>{mins:02d}:{secs:02d}</b> | 🕒 Última atualização do sistema: <b>{last_time_formatted}</b></p>", unsafe_allow_html=True)
             
             countdown_display()
         else:
             st.session_state.pop("next_refresh_ts", None)
-            st.markdown(f"<p style='margin: 0; font-size: 0.9rem; font-weight: 600; color: #8C4A00;'>🕒 Última atualização: <b>{last_time_formatted}</b></p>", unsafe_allow_html=True)
+            st.markdown(f"<p style='margin: 0; font-size: 0.85rem; font-weight: 600; color: #8C4A00;'>🕒 Última atualização do sistema: <b>{last_time_formatted}</b></p>", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
     _load_and_render_admin_content(client, display_store_name, known_store_labels)
@@ -512,19 +451,6 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
     else:
         df["dt_object"] = pd.Series(dtype="datetime64[ns, America/Sao_Paulo]")
         latest = pd.DataFrame(columns=["store_id", "product", "quantity_remaining", "created_at", "Loja", "Data e Hora", "Funcionária", "photo_path", "notes"])
-
-    total_stores = len(stores)
-    today = pd.Timestamp.now(tz="America/Sao_Paulo").date()
-    total_latest_units = int(pd.to_numeric(latest.get("quantity_remaining", pd.Series(dtype=float)), errors="coerce").fillna(0).sum()) if not latest.empty else 0
-    entries_today = int((df["dt_object"].dt.date == today).sum()) if not df.empty else 0
-
-    # Removido o bloco de valor estimado, agora exibe apenas 3 KPIs principais
-    k1, k2, k3 = st.columns(3)
-    k1.markdown(f'<div class="kpi-card"><div class="kpi-title">Lojas Ativas</div><div class="kpi-value">{total_stores} Unidades</div></div>', unsafe_allow_html=True)
-    k2.markdown(f'<div class="kpi-card"><div class="kpi-title">Estoque Total</div><div class="kpi-value">{total_latest_units} un.</div></div>', unsafe_allow_html=True)
-    k3.markdown(f'<div class="kpi-card"><div class="kpi-title">Lançamentos Hoje</div><div class="kpi-value">{entries_today}</div></div>', unsafe_allow_html=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
 
     tab_overview, tab_stores, tab_carteirinhas, tab_history, tab_reports = st.tabs([
         "📌 Resumo de Marmitas", 
@@ -589,7 +515,7 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
         if not store_latest.empty:
             for _, row in store_latest.iterrows():
                 c1, c2, c3, c4 = st.columns([2.5, 1, 1, 1])
-                c1.markdown(f"**{row['product']}**")
+                c1.markdown(f"**{row['product']}** — <small>{row.get('notes', '')}</small>", unsafe_allow_html=True)
                 c2.markdown(f"**{int(row['quantity_remaining'])} un.**")
                 
                 path = row.get("photo_path")
@@ -653,6 +579,7 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                 store_filter_options = ["Todas as Lojas"] + list(display_names.values())
                 selected_store_filter = st.selectbox("Filtrar por Loja", store_filter_options)
             with f_col2:
+                today = pd.Timestamp.now(tz="America/Sao_Paulo").date()
                 date_range = st.date_input("Filtrar por Período", value=[today, today])
             
             filtered_df = df.copy()
@@ -670,7 +597,7 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
             renamed_df = filtered_df[display_cols].rename(columns={
                 "product": "Produto",
                 "quantity_remaining": "Quantidade Restante",
-                "notes": "Financeiro / Obs"
+                "notes": "Observações & Financeiro"
             })
             st.dataframe(renamed_df, use_container_width=True, hide_index=True)
             
