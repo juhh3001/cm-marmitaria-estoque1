@@ -6,31 +6,128 @@ import pandas as pd
 import streamlit as st
 from supabase import create_client, Client
 
-st.set_page_config(page_title="Controle de Estoque | 7 Lojas", page_icon="📦", layout="wide")
+# Configuração da Página
+st.set_page_config(
+    page_title="CM Marmitaria | Controle de Estoque",
+    page_icon="🍲",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
 PRODUCTS = ["Marmitex pequena", "Marmitex grande", "Refrigerantes Peq", "Pudim", "Refrigerante lata", "Água"]
 PRODUCT_PRICES = {"Marmitex pequena": 11.99, "Marmitex grande": 15.00, "Refrigerantes Peq": 4.00, "Pudim": 5.00, "Refrigerante lata": 7.00, "Água": 4.00}
-PRODUCT_COLORS = ["#2563EB", "#7C3AED", "#0891B2", "#DB2777", "#EA580C", "#059669"]
 BUCKET = "stock-photos"
 USERNAME_EMAIL_DOMAIN = "estoque.invalid"
 
+# Estilização CSS Baseada na Identidade Visual da CM Marmitaria
 st.markdown("""
 <style>
-:root { --gold:#f5c400; --gold-dark:#8a6500; --ink:#201b08; --cream:#fff9df; }
-.block-container { padding-top:1rem; padding-bottom:1.5rem; max-width:1600px; }
-[data-testid="stSidebar"] { background:linear-gradient(180deg,#ffd600 0%,#f5bd00 100%); }
-[data-testid="stSidebar"] * { color:#201b08; }
-[data-testid="stMetric"] { background:linear-gradient(135deg,#fff8d6,#ffed91); padding:14px; border:1px solid #f0d66b; border-radius:15px; }
-.hero { padding:1.1rem 1.35rem; border-radius:18px; color:#201b08; background:linear-gradient(120deg,#ffdf55,#f5c400,#ffe994); margin-bottom:1rem; border:1px solid #e8bd18; }
-.hero h1 { color:#201b08; margin:0; font-size:1.8rem; }
-.hero p { color:#594600; margin:.25rem 0 0; }
-.store-card { border:1px solid #f0d66b; border-radius:15px; padding:.85rem; background:#fffdf4; box-shadow:0 3px 12px rgba(70,50,0,.07); margin-bottom:.45rem; }
-.pill { display:inline-block; border-radius:999px; padding:.15rem .5rem; font-size:.75rem; font-weight:700; }
-.product-line { display:flex; align-items:center; justify-content:space-between; gap:.5rem; padding:.55rem .2rem; border-bottom:1px solid #f2e6b8; }
-.product-line:last-child { border-bottom:0; }
-.qty-pill { background:#fff0a8; color:#765700; border-radius:9px; padding:.25rem .55rem; font-weight:800; white-space:nowrap; }
-div.stButton > button, [data-testid="stFormSubmitButton"] button { border-radius:10px; }
-@media(max-width:700px) { .block-container {padding-left:.7rem;padding-right:.7rem;} .hero h1 {font-size:1.35rem;} }
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'Poppins', sans-serif;
+}
+
+/* Fundo Geral Amarelo Suave */
+.stApp {
+    background-color: #FFFDF0 !important;
+}
+
+.block-container {
+    padding-top: 1.2rem;
+    padding-bottom: 2rem;
+    max-width: 1500px;
+}
+
+/* Menu Lateral (Sidebar) Amarelo Ouro com Texto Marrom */
+[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #FFCC00 0%, #F5B800 100%) !important;
+    border-right: 2px solid #E6A100;
+}
+[data-testid="stSidebar"] * {
+    color: #2A1200 !important;
+}
+
+/* Cabeçalho Principal (Hero) */
+.hero-header {
+    background: linear-gradient(120deg, #FFC107 0%, #FF9800 100%);
+    padding: 1.5rem 1.8rem;
+    border-radius: 18px;
+    color: #2A1200;
+    margin-bottom: 1.5rem;
+    border: 2px solid #E68A00;
+    box-shadow: 0 8px 16px rgba(230, 138, 0, 0.15);
+}
+.hero-header h1 {
+    color: #2A1200 !important;
+    font-size: 1.8rem;
+    font-weight: 800;
+    margin: 0;
+}
+.hero-header p {
+    color: #4A2300 !important;
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin-top: 0.25rem;
+}
+
+/* Cartões de Métricas (KPIs) */
+.kpi-card {
+    background: #FFFFFF;
+    border: 2px solid #FFD54F;
+    border-radius: 16px;
+    padding: 1rem 1.25rem;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.03);
+}
+.kpi-title {
+    font-size: 0.8rem;
+    color: #8C4A00;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.kpi-value {
+    font-size: 1.7rem;
+    font-weight: 800;
+    color: #2A1200;
+    margin-top: 0.2rem;
+}
+
+/* Cartões das Lojas */
+.store-box {
+    background: #FFFFFF;
+    border: 2px solid #FFE082;
+    border-radius: 16px;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+    box-shadow: 0 4px 12px rgba(218, 165, 32, 0.08);
+}
+
+/* Badges / Status */
+.badge {
+    display: inline-block;
+    padding: 0.3rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+.badge-success { background-color: #E8F5E9; color: #2E7D32; border: 1px solid #A5D6A7; }
+.badge-warning { background-color: #FFF3E0; color: #E65100; border: 1px solid #FFCC80; }
+
+/* Estilização dos Botões */
+div.stButton > button, [data-testid="stFormSubmitButton"] button {
+    background-color: #FFB300 !important;
+    color: #2A1200 !important;
+    font-weight: 700 !important;
+    border: 2px solid #E69900 !important;
+    border-radius: 12px !important;
+    padding: 0.5rem 1rem !important;
+    transition: all 0.2s ease !important;
+}
+div.stButton > button:hover, [data-testid="stFormSubmitButton"] button:hover {
+    background-color: #FFA000 !important;
+    transform: translateY(-1px);
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -71,31 +168,41 @@ def sign_out():
 
 
 def login_screen(client: Client):
-    st.title("📦 Controle de Estoque — 7 Lojas")
-    st.write("Funcionárias: entrem com seu nome de usuário e senha. Administração: use o e-mail cadastrado.")
-    with st.form("login_form"):
-        login = st.text_input("Usuário ou e-mail", placeholder="Ex.: ana.loja1")
-        password = st.text_input("Senha", type="password")
-        submitted = st.form_submit_button("Entrar", type="primary", use_container_width=True)
-    if submitted:
-        login_value = login.strip()
-        if not login_value or not password:
-            st.warning("Preencha o usuário e a senha.")
-            return
-        auth_email = login_value if "@" in login_value else f"{login_value.lower()}@{USERNAME_EMAIL_DOMAIN}"
-        try:
-            response = client.auth.sign_in_with_password({"email": auth_email, "password": password})
-            if not response.user or not response.session:
-                st.error("Não foi possível entrar. Confira seus dados.")
+    st.markdown("<br>", unsafe_allow_html=True)
+    c1, c2, c3 = st.columns([1, 1.2, 1])
+    with c2:
+        st.markdown("""
+        <div style='text-align: center; margin-bottom: 1.5rem; background: #FFFFFF; padding: 2rem; border-radius: 20px; border: 2px solid #FFD54F; box-shadow: 0 8px 20px rgba(0,0,0,0.05);'>
+            <h1 style='color: #2A1200; font-size: 2.2rem; font-weight: 800; margin-bottom: 0;'>🏠 CM MARMITARIA</h1>
+            <p style='color: #8C4A00; font-size: 0.85rem; font-weight: 600; margin-top: 0;'>QUALIDADE | SABOR | TRADIÇÃO · DESDE 2015</p>
+            <hr style='border: 1px solid #FFE082; margin: 1rem 0;'>
+            <p style='color: #4A2300; font-size: 1rem; font-weight: 600;'>Controle de Estoque das Lojas</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        with st.form("login_form"):
+            login = st.text_input("Usuário ou e-mail", placeholder="Ex.: bia.loja1")
+            password = st.text_input("Senha", type="password")
+            submitted = st.form_submit_button("Entrar no Sistema", type="primary", use_container_width=True)
+            
+        if submitted:
+            login_value = login.strip()
+            if not login_value or not password:
+                st.warning("Preencha o usuário e a senha.")
                 return
-            st.session_state.supabase_user_id = str(response.user.id)
-            st.session_state.supabase_email = response.user.email or auth_email
-            st.session_state.supabase_access_token = response.session.access_token
-            st.session_state.supabase_refresh_token = response.session.refresh_token
-            st.rerun()
-        except Exception:
-            st.error("Não foi possível entrar. Confira o usuário e a senha ou fale com a pessoa administradora.")
-    st.caption("Cada funcionária deve ter seu próprio usuário e senha. Não compartilhe sua senha com outras pessoas.")
+            auth_email = login_value if "@" in login_value else f"{login_value.lower()}@{USERNAME_EMAIL_DOMAIN}"
+            try:
+                response = client.auth.sign_in_with_password({"email": auth_email, "password": password})
+                if not response.user or not response.session:
+                    st.error("Não foi possível entrar. Confira seus dados.")
+                    return
+                st.session_state.supabase_user_id = str(response.user.id)
+                st.session_state.supabase_email = response.user.email or auth_email
+                st.session_state.supabase_access_token = response.session.access_token
+                st.session_state.supabase_refresh_token = response.session.refresh_token
+                st.rerun()
+            except Exception:
+                st.error("Não foi possível entrar. Confira o usuário e a senha.")
 
 
 def restore_auth_session(client: Client):
@@ -171,44 +278,53 @@ def add_stock_entries(client: Client, profile: dict, quantities: dict, photos: d
     return client.table("stock_entries").insert(rows).execute()
 
 
+# Interface das Funcionárias (Mobile Otimizado em Amarelo/Marrom)
 def staff_screen(client: Client, profile: dict):
     store_name = get_store_name(client, profile.get("store_id"))
-    st.title("Registrar estoque")
-    st.caption(f"Loja: **{store_name}** · Acesso de lançamento")
-    st.info("Preencha a quantidade que ainda existe de cada produto. As fotos são opcionais.")
+    display_name = profile.get("display_name") or "Funcionária"
+    
+    st.markdown(f"""
+    <div class="hero-header">
+        <div style="font-size: 0.85rem; font-weight: 700; color: #8C4A00; text-transform: uppercase;">CM MARMITARIA</div>
+        <h1>👋 Olá, {display_name}</h1>
+        <p>Lançamento de Estoque · <strong>{store_name}</strong></p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.info("💡 Digite a quantidade restante de cada produto hoje. Adicione fotos se necessário.")
 
     with st.form("stock_entry_form", clear_on_submit=False):
         quantities = {}
         photos = {}
+        
         for idx, product in enumerate(PRODUCTS):
-            st.subheader(product)
-            col1, col2 = st.columns([1, 1.4])
-            with col1:
+            st.markdown(f"#### 🍲 {product}")
+            c1, c2 = st.columns([1.2, 1])
+            with c1:
                 quantities[product] = st.number_input(
-                    f"Quantidade restante — {product}", min_value=0, step=1, value=0, key=f"qty_{idx}"
+                    "Quantidade restante", min_value=0, step=1, value=0, key=f"qty_{idx}"
                 )
-            with col2:
-                photos[product] = st.file_uploader(
-                    f"Foto de {product} (opcional)",
-                    type=["jpg", "jpeg", "png", "webp"],
-                    accept_multiple_files=False,
-                    key=f"photo_{idx}",
-                    help="Você pode tirar uma foto com a câmera do celular ou escolher uma imagem. Máximo 8 MB.",
-                )
+            with c2:
+                with st.expander("📷 Foto (opcional)"):
+                    photos[product] = st.file_uploader(
+                        "Anexar foto",
+                        type=["jpg", "jpeg", "png", "webp"],
+                        key=f"photo_{idx}",
+                        label_visibility="collapsed"
+                    )
             st.divider()
-        notes = st.text_area("Observações (opcional)", placeholder="Ex.: chegou uma reposição às 11h.")
-        submitted = st.form_submit_button("Salvar lançamento", type="primary", use_container_width=True)
+
+        notes = st.text_area("Observações da loja (opcional)", placeholder="Ex.: Chegou reposição de bebidas às 11h...")
+        submitted = st.form_submit_button("✅ Salvar Lançamento no Sistema", type="primary", use_container_width=True)
 
     if submitted:
         try:
             add_stock_entries(client, profile, quantities, photos, notes)
-            st.success("Lançamento salvo! Seus pais poderão acompanhar as informações no painel administrativo.")
+            st.success("🎉 Lançamento salvo com sucesso no banco de dados!")
         except ValueError as exc:
             st.error(str(exc))
-        except Exception as exc:
-            st.error("Não foi possível salvar o lançamento.")
-            st.caption(f"Detalhe técnico: {type(exc).__name__}: {str(exc)[:500]}")
-            st.info("Se aparecer 'row-level security policy', o bloqueio está nas regras do Supabase e precisa ser corrigido nelas; não desative o RLS.")
+        except Exception:
+            st.error("Não foi possível salvar o lançamento. Verifique a conexão.")
 
 
 def signed_photo_url(client: Client, path: str):
@@ -219,8 +335,8 @@ def signed_photo_url(client: Client, path: str):
         return None
 
 
+# Painel do Administrador (Dashboard CM Marmitaria)
 def admin_dashboard(client: Client, profile: dict):
-    # Os nomes exibidos aqui são apenas rótulos de interface; não alteram IDs nem dados do Supabase.
     known_store_labels = {
         "5": ("Leme", "Kauany"),
         "10": ("Pirajussara", "Julia"),
@@ -241,223 +357,160 @@ def admin_dashboard(client: Client, profile: dict):
         return (raw or "Unidade sem nome", "Cadastro pendente")
 
     st.markdown("""
-    <div class="hero">
-      <h1>⌂ MARMITEX · CONTROLE DE ESTOQUE</h1>
-      <p>Visão geral das unidades · atualização automática a cada 5 minutos</p>
+    <div class="hero-header">
+        <div style="font-size: 0.85rem; font-weight: 700; color: #8C4A00; text-transform: uppercase;">PAINEL CENTRAL · CM MARMITARIA</div>
+        <h1>📊 Controle Consolidado de Estoque</h1>
+        <p>Acompanhamento das 7 unidades comerciais em tempo real</p>
     </div>
     """, unsafe_allow_html=True)
 
-    @st.fragment(run_every=300)
-    def live_panel():
-        try:
-            stores = client.table("stores").select("id, name").execute().data or []
-            entries = client.table("stock_entries").select(
-                "id, store_id, user_id, product, quantity_remaining, photo_path, notes, created_at"
-            ).order("created_at", desc=True).limit(2000).execute().data or []
-            profiles = client.table("profiles").select("user_id, display_name").execute().data or []
-        except Exception as exc:
-            st.error("Não foi possível carregar o painel. Confira a conexão e as permissões do Supabase.")
-            st.caption(f"Detalhe técnico: {type(exc).__name__}: {str(exc)[:300]}")
-            return
+    try:
+        stores = client.table("stores").select("id, name").execute().data or []
+        entries = client.table("stock_entries").select(
+            "id, store_id, user_id, product, quantity_remaining, photo_path, notes, created_at"
+        ).order("created_at", desc=True).limit(2000).execute().data or []
+        profiles = client.table("profiles").select("user_id, display_name").execute().data or []
+    except Exception:
+        st.error("Erro ao carregar dados do Supabase.")
+        return
 
-        if not stores:
-            st.warning("Nenhuma unidade foi encontrada na tabela stores do Supabase.")
-            return
+    if not stores:
+        st.warning("Nenhuma loja cadastrada.")
+        return
 
-        store_names = {str(x["id"]): str(x.get("name") or "Unidade sem nome") for x in stores}
-        display_names = {key: display_store_name(value)[0] for key, value in store_names.items()}
-        staff_by_store = {key: display_store_name(value)[1] for key, value in store_names.items()}
-        profile_names = {str(x["user_id"]): x.get("display_name") or "Usuário" for x in profiles}
-        df = pd.DataFrame(entries)
-        if not df.empty:
-            df["store_id"] = df["store_id"].astype(str)
-            df["Loja"] = df["store_id"].map(display_names).fillna("Unidade não identificada")
-            df["Funcionária"] = df["user_id"].astype(str).map(profile_names).fillna("Usuário")
-            df["created_at"] = pd.to_datetime(df["created_at"], errors="coerce", utc=True)
-            df["Data e hora"] = df["created_at"].dt.tz_convert("America/Sao_Paulo").dt.strftime("%d/%m/%Y %H:%M")
-            latest = df.dropna(subset=["created_at"]).sort_values("created_at").groupby(["store_id", "product"], as_index=False).tail(1)
-        else:
-            latest = pd.DataFrame(columns=["store_id", "product", "quantity_remaining", "created_at", "Loja", "Data e hora", "Funcionária", "photo_path", "notes"])
+    store_names = {str(x["id"]): str(x.get("name") or "Unidade") for x in stores}
+    display_names = {key: display_store_name(value)[0] for key, value in store_names.items()}
+    staff_by_store = {key: display_store_name(value)[1] for key, value in store_names.items()}
+    profile_names = {str(x["user_id"]): x.get("display_name") or "Usuário" for x in profiles}
+    
+    df = pd.DataFrame(entries)
+    if not df.empty:
+        df["store_id"] = df["store_id"].astype(str)
+        df["Loja"] = df["store_id"].map(display_names).fillna("Unidade")
+        df["Funcionária"] = df["user_id"].astype(str).map(profile_names).fillna("Usuário")
+        df["created_at"] = pd.to_datetime(df["created_at"], errors="coerce", utc=True)
+        df["Data e hora"] = df["created_at"].dt.tz_convert("America/Sao_Paulo").dt.strftime("%d/%m/%Y %H:%M:%S")
+        latest = df.dropna(subset=["created_at"]).sort_values("created_at").groupby(["store_id", "product"], as_index=False).tail(1)
+    else:
+        latest = pd.DataFrame(columns=["store_id", "product", "quantity_remaining", "created_at", "Loja", "Data e hora", "Funcionária", "photo_path", "notes"])
 
-        # Indicadores gerais
-        total_stores = len(stores)
-        stores_with_entries = set(df["store_id"].astype(str)) if not df.empty else set()
-        stores_without_entries = total_stores - len(stores_with_entries)
-        total_latest_units = int(pd.to_numeric(latest.get("quantity_remaining", pd.Series(dtype=float)), errors="coerce").fillna(0).sum()) if not latest.empty else 0
-        today = pd.Timestamp.now(tz="America/Sao_Paulo").date()
-        entries_today = int((df["created_at"].dt.tz_convert("America/Sao_Paulo").dt.date == today).sum()) if not df.empty else 0
-        photos_count = int(df["photo_path"].fillna("").astype(str).str.strip().ne("").sum()) if not df.empty else 0
-        k1, k2, k3, k4 = st.columns(4)
-        k1.metric("Unidades cadastradas", total_stores, help="Total de lojas cadastradas no Supabase")
-        k2.metric("Unidades sem registro", stores_without_entries, help="Lojas sem nenhum lançamento no histórico carregado")
-        k3.metric("Unidades em estoque*", total_latest_units, help="Soma das últimas quantidades registradas por produto e loja")
-        k4.metric("Registros de hoje", entries_today)
-        st.caption(f"Fotos anexadas no histórico carregado: {photos_count} · *A quantidade é calculada a partir do último registro de cada produto, não de entradas/saídas automáticas.")
+    # Indicadores Gerais
+    total_stores = len(stores)
+    today = pd.Timestamp.now(tz="America/Sao_Paulo").date()
+    total_latest_units = int(pd.to_numeric(latest.get("quantity_remaining", pd.Series(dtype=float)), errors="coerce").fillna(0).sum()) if not latest.empty else 0
+    entries_today = int((df["created_at"].dt.tz_convert("America/Sao_Paulo").dt.date == today).sum()) if not df.empty else 0
 
-        # Sidebar navigation and selected store
-        with st.sidebar:
-            st.markdown("<div style='text-align:center;font-size:2.2rem'>🍲</div><h2 style='text-align:center;margin-top:0'>MARMITEX</h2><p style='text-align:center;font-size:.8rem'>CONTROLE DE ESTOQUE</p>", unsafe_allow_html=True)
-            page = st.radio("NAVEGAÇÃO", ["Visão Geral", "Lojas", "Produtos", "Histórico", "Relatórios", "Configurações"], key="admin_nav", label_visibility="collapsed")
-            st.divider()
-            st.caption("Acesso administrativo")
+    total_value = 0
+    if not latest.empty:
+        for _, row in latest.iterrows():
+            p_name = row["product"]
+            p_qty = row["quantity_remaining"]
+            total_value += p_qty * PRODUCT_PRICES.get(p_name, 0.0)
 
-        # Latest row for each store/product
-        if not latest.empty:
-            latest["quantity_remaining"] = pd.to_numeric(latest["quantity_remaining"], errors="coerce").fillna(0)
-        marmitas = latest[latest["product"].isin(["Marmitex pequena", "Marmitex grande"])] if not latest.empty else latest
-        marmita_totals = marmitas.groupby("store_id")["quantity_remaining"].sum().to_dict() if not marmitas.empty else {}
-        sorted_low = sorted(stores, key=lambda x: marmita_totals.get(str(x["id"]), 0))
-        low_store = sorted_low[0] if sorted_low else None
+    k1, k2, k3, k4 = st.columns(4)
+    k1.markdown(f'<div class="kpi-card"><div class="kpi-title">Lojas Ativas</div><div class="kpi-value">{total_stores} Unidades</div></div>', unsafe_allow_html=True)
+    k2.markdown(f'<div class="kpi-card"><div class="kpi-title">Estoque Total</div><div class="kpi-value">{total_latest_units} un.</div></div>', unsafe_allow_html=True)
+    k3.markdown(f'<div class="kpi-card"><div class="kpi-title">Valor Estimado</div><div class="kpi-value">R$ {total_value:,.2f}</div></div>', unsafe_allow_html=True)
+    k4.markdown(f'<div class="kpi-card"><div class="kpi-title">Lançamentos Hoje</div><div class="kpi-value">{entries_today}</div></div>', unsafe_allow_html=True)
 
-        if page == "Visão Geral":
-            st.markdown("### Status das unidades")
-            st.caption("Clique no nome de uma unidade no menu Lojas para ver quantidades e fotos ao lado de cada produto.")
-            cards = st.columns(3)
-            for idx, store in enumerate(stores):
-                sid = str(store["id"])
-                name = display_names[sid]
-                store_latest = latest[latest["store_id"] == sid] if not latest.empty else latest
-                store_rows = df[df["store_id"] == sid] if not df.empty else df
-                last_time = store_rows["created_at"].max() if not store_rows.empty else pd.NaT
-                has_today = pd.notna(last_time) and last_time.tz_convert("America/Sao_Paulo").date() == today
-                qty = int(pd.to_numeric(store_latest.get("quantity_remaining", pd.Series(dtype=float)), errors="coerce").fillna(0).sum()) if not store_latest.empty else 0
-                low = sid == str(low_store["id"]) if low_store else False
-                with cards[idx % 3]:
-                    st.markdown('<div class="store-card">', unsafe_allow_html=True)
-                    st.markdown(f"#### 🏪 {name}")
-                    st.caption(f"Responsável: {staff_by_store[sid]}")
-                    st.markdown(f"**{qty} unidades registradas**")
-                    if pd.notna(last_time):
-                        local_time = last_time.tz_convert("America/Sao_Paulo").strftime("%d/%m · %H:%M")
-                        st.caption(f"Último registro: {local_time}")
-                    else:
-                        st.caption("Ainda sem registros")
-                    if not has_today:
-                        st.warning("Aguardando atualização de hoje")
-                    elif low:
-                        st.error("Menor quantidade de marmitas")
-                    else:
-                        st.success("Atualizada hoje")
-                    st.markdown('</div>', unsafe_allow_html=True)
-                    if st.button(f"Ver {name}", key=f"overview_{sid}", use_container_width=True):
-                        st.session_state["selected_store_id"] = sid
-                        st.session_state["admin_nav"] = "Lojas"
-                        st.rerun()
+    st.markdown("<br>", unsafe_allow_html=True)
 
-            st.markdown("### ⚠️ Lojas que precisam de atenção")
-            low_rows = []
-            for store in sorted_low[:5]:
-                sid = str(store["id"])
-                low_rows.append({"Unidade": display_names[sid], "Marmitas registradas": int(marmita_totals.get(sid, 0)), "Responsável": staff_by_store[sid]})
-            if low_rows:
-                st.dataframe(pd.DataFrame(low_rows), use_container_width=True, hide_index=True)
-            left, right = st.columns(2)
-            with left:
-                st.markdown("### Produtos por quantidade")
-                if not latest.empty:
-                    totals = latest.groupby("product", as_index=False)["quantity_remaining"].sum().rename(columns={"product":"Produto", "quantity_remaining":"Unidades"})
-                    st.bar_chart(totals.set_index("Produto"), color="#E9B923", use_container_width=True)
-                else:
-                    st.info("Os gráficos aparecerão quando houver lançamentos.")
-            with right:
-                st.markdown("### Resumo rápido")
-                st.metric("Produtos monitorados", len(PRODUCTS))
-                st.metric("Lojas com registro hoje", sum(1 for store in stores if not df.empty and ((df[df["store_id"] == str(store["id"])]["created_at"].dt.tz_convert("America/Sao_Paulo").dt.date == today).any())))
-                st.metric("Sem registro no histórico", stores_without_entries)
+    tab_overview, tab_stores, tab_history, tab_reports = st.tabs(["📌 Visão Geral Lojas", "🏪 Consulta por Loja", "📜 Histórico Geral", "📊 Relatório Consolidado"])
 
-        elif page == "Lojas":
-            st.markdown("### 🏪 Visão individual das lojas")
-            options = {display_names[str(store["id"])]: str(store["id"]) for store in stores}
-            labels = list(options.keys())
-            default_sid = st.session_state.get("selected_store_id")
-            default_index = next((i for i, label in enumerate(labels) if options[label] == default_sid), 0)
-            selected_label = st.selectbox("Escolha a loja", labels, index=default_index)
-            sid = options[selected_label]
-            selected_store = next(x for x in stores if str(x["id"]) == sid)
+    with tab_overview:
+        st.markdown("### Status de Atualização das 7 Lojas")
+        cards = st.columns(3)
+        for idx, store in enumerate(stores):
+            sid = str(store["id"])
+            name = display_names[sid]
             store_latest = latest[latest["store_id"] == sid] if not latest.empty else latest
-            store_history = df[df["store_id"] == sid].copy() if not df.empty else df.copy()
-            store_last = store_history["created_at"].max() if not store_history.empty else pd.NaT
-            st.markdown(f"<div class='hero'><h1>🏪 {selected_label}</h1><p>Responsável: {staff_by_store[sid]} · Estoque registrado nesta unidade</p></div>", unsafe_allow_html=True)
-            a, b, c = st.columns(3)
-            a.metric("Unidades registradas", int(pd.to_numeric(store_latest.get("quantity_remaining", pd.Series(dtype=float)), errors="coerce").fillna(0).sum()) if not store_latest.empty else 0)
-            a_marm = store_latest[store_latest["product"].isin(["Marmitex pequena", "Marmitex grande"])] if not store_latest.empty else store_latest
-            b.metric("Marmitas registradas", int(pd.to_numeric(a_marm.get("quantity_remaining", pd.Series(dtype=float)), errors="coerce").fillna(0).sum()) if not a_marm.empty else 0)
-            c.metric("Último registro", store_last.tz_convert("America/Sao_Paulo").strftime("%d/%m %H:%M") if pd.notna(store_last) else "Sem registro")
-            st.markdown("#### Estoque por produto · foto junto do registro")
-            for product in PRODUCTS:
-                rows = store_latest[store_latest["product"] == product] if not store_latest.empty else store_latest
-                if rows.empty:
-                    st.markdown(f"<div class='store-card'><b>{product}</b><br><span style='color:#8a6500'>Ainda sem registro</span></div>", unsafe_allow_html=True)
-                    continue
-                row = rows.iloc[-1]
-                cols = st.columns([4, 1, 1])
-                with cols[0]:
-                    st.markdown(f"**{product}**  ")
-                    st.caption(f"Último registro: {row.get('Data e hora', '—')} · {row.get('Funcionária', 'Usuário')}")
-                    if row.get("notes"):
-                        st.caption(f"Observação: {row.get('notes')}")
-                with cols[1]:
-                    st.markdown(f"<div class='qty-pill'>{int(row['quantity_remaining'])} un.</div>", unsafe_allow_html=True)
-                with cols[2]:
-                    path = row.get("photo_path")
-                    url = signed_photo_url(client, path) if isinstance(path, str) and path.strip() else None
-                    if url:
-                        with st.popover("📷 Foto"):
-                            st.image(url, use_container_width=True)
-                    else:
-                        st.caption("Sem foto")
+            store_rows = df[df["store_id"] == sid] if not df.empty else df
+            last_time = store_rows["created_at"].max() if not store_rows.empty else pd.NaT
+            has_today = pd.notna(last_time) and last_time.tz_convert("America/Sao_Paulo").date() == today
+            qty = int(pd.to_numeric(store_latest.get("quantity_remaining", pd.Series(dtype=float)), errors="coerce").fillna(0).sum()) if not store_latest.empty else 0
+
+            # Formata a última vez exata que mexeu (dia e horário com minutos/segundos)
+            if pd.notna(last_time):
+                last_time_str = last_time.tz_convert("America/Sao_Paulo").strftime("%d/%m/%Y às %H:%M")
+            else:
+                last_time_str = "Nunca atualizado"
+
+            with cards[idx % 3]:
+                status_badge = '<span class="badge badge-success">Atualizado Hoje</span>' if has_today else '<span class="badge badge-warning">Pendente Hoje</span>'
+                st.markdown(f"""
+                <div class="store-box">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong style="color: #2A1200; font-size: 1.1rem;">🏪 {name}</strong>
+                        {status_badge}
+                    </div>
+                    <p style="color: #64748B; font-size: 0.8rem; margin: 0.25rem 0 0.2rem 0;">Responsável: <strong>{staff_by_store[sid]}</strong></p>
+                    <p style="color: #8C4A00; font-size: 0.75rem; margin: 0 0 0.75rem 0;">Última vez: <strong>{last_time_str}</strong></p>
+                    <h3 style="color: #D97706; margin: 0; font-size: 1.5rem;">{qty} <span style="font-size: 0.9rem; color: #64748B;">itens em estoque</span></h3>
+                </div>
+                """, unsafe_allow_html=True)
+
+    with tab_stores:
+        st.markdown("### Detalhes por Loja e Exclusão de Registros")
+        options = {display_names[str(store["id"])]: str(store["id"]) for store in stores}
+        selected_label = st.selectbox("Escolha a Loja para gerenciar", list(options.keys()))
+        sid = options[selected_label]
+        store_latest = latest[latest["store_id"] == sid] if not latest.empty else latest
+
+        # Botão para apagar TUDO daquela loja específica
+        col_del_all, _ = st.columns([1, 2])
+        with col_del_all:
+            if st.button(f"🗑️ Apagar todas as alterações desta loja", key=f"del_all_{sid}", type="secondary"):
+                try:
+                    client.table("stock_entries").delete().eq("store_id", sid).execute()
+                    st.success("Todos os registros desta loja foram apagados com sucesso!")
+                    st.rerun()
+                except Exception:
+                    st.error("Erro ao apagar os registros da loja.")
+
+        st.markdown("<hr>", unsafe_allow_html=True)
+
+        if not store_latest.empty:
+            for _, row in store_latest.iterrows():
+                c1, c2, c3, c4 = st.columns([2.5, 1, 1, 1])
+                c1.markdown(f"**{row['product']}**")
+                c2.markdown(f"**{int(row['quantity_remaining'])} un.**")
+                
+                path = row.get("photo_path")
+                url = signed_photo_url(client, path) if isinstance(path, str) and path.strip() else None
+                if url:
+                    with c3.popover("📷 Ver Foto"):
+                        st.image(url, use_container_width=True)
+                else:
+                    c3.caption("Sem foto")
+
+                # Botão para apagar um item/linha específica pelo ID do banco
+                row_id = row.get("id")
+                if c4.button("🗑️ Apagar", key=f"del_row_{row_id}"):
+                    try:
+                        client.table("stock_entries").delete().eq("id", row_id).execute()
+                        st.success("Item apagado!")
+                        st.rerun()
+                    except Exception:
+                        st.error("Erro ao apagar o item.")
                 st.divider()
-            st.markdown("#### Histórico desta loja")
-            if store_history.empty:
-                st.info("Esta loja ainda não tem lançamentos.")
-            else:
-                hist_view = store_history[["product", "quantity_remaining", "Data e hora", "Funcionária", "notes"]].rename(columns={"product":"Produto", "quantity_remaining":"Quantidade", "Data e hora":"Data e hora", "Funcionária":"Funcionária", "notes":"Observações"})
-                st.dataframe(hist_view.head(100), use_container_width=True, hide_index=True)
-
-        elif page == "Produtos":
-            st.markdown("### 📦 Produtos cadastrados")
-            for product in PRODUCTS:
-                qty = int(pd.to_numeric(latest.loc[latest["product"] == product, "quantity_remaining"], errors="coerce").fillna(0).sum()) if not latest.empty else 0
-                st.markdown(f"<div class='store-card'><b>{product}</b><span style='float:right' class='qty-pill'>{qty} un.</span><br><small>Preço cadastrado: R$ {PRODUCT_PRICES[product]:.2f}</small></div>", unsafe_allow_html=True)
-
-        elif page == "Histórico":
-            st.markdown("### 🕘 Histórico de registros")
-            if df.empty:
-                st.info("Ainda não existem lançamentos.")
-            else:
-                f1, f2 = st.columns(2)
-                store_filter = f1.selectbox("Filtrar loja", ["Todas as lojas"] + list(display_names.values()))
-                product_filter = f2.selectbox("Filtrar produto", ["Todos os produtos"] + PRODUCTS)
-                hist = df.copy()
-                if store_filter != "Todas as lojas": hist = hist[hist["Loja"] == store_filter]
-                if product_filter != "Todos os produtos": hist = hist[hist["product"] == product_filter]
-                view = hist[["Loja", "product", "quantity_remaining", "Data e hora", "Funcionária", "notes"]].rename(columns={"product":"Produto", "quantity_remaining":"Quantidade", "notes":"Observações"})
-                st.dataframe(view, use_container_width=True, hide_index=True)
-                csv = view.to_csv(index=False).encode("utf-8-sig")
-                st.download_button("⬇️ Exportar histórico (CSV para Excel)", data=csv, file_name="historico_estoque.csv", mime="text/csv", use_container_width=True)
-
-        elif page == "Relatórios":
-            st.markdown("### 📊 Relatórios")
-            if not latest.empty:
-                report = latest.groupby(["Loja", "product"], as_index=False)["quantity_remaining"].sum().rename(columns={"Loja":"Unidade", "product":"Produto", "quantity_remaining":"Quantidade registrada"})
-                st.dataframe(report, use_container_width=True, hide_index=True)
-                st.download_button("Exportar relatório CSV", data=report.to_csv(index=False).encode("utf-8-sig"), file_name="relatorio_estoque.csv", mime="text/csv")
-            else:
-                st.info("Não há dados suficientes para montar o relatório.")
-
         else:
-            st.markdown("### ⚙️ Configurações")
-            st.info("As configurações de contas, permissões e cadastro de unidades continuam sendo gerenciadas no Supabase. Esta tela não altera configurações do banco.")
-            st.caption("Para manter a segurança, não desative as políticas RLS do Supabase.")
+            st.info("Nenhum lançamento ativo para esta loja.")
 
-    live_panel()
+    with tab_history:
+        st.markdown("### Histórico Geral de Lançamentos")
+        if not df.empty:
+            st.dataframe(df[["Loja", "product", "quantity_remaining", "Data e hora", "Funcionária", "notes"]], use_container_width=True, hide_index=True)
+
+    with tab_reports:
+        st.markdown("### Visão por Produto")
+        if not latest.empty:
+            st.bar_chart(latest.groupby("product")["quantity_remaining"].sum())
+
 
 def main():
     client = get_client()
     if client is None:
-        st.title("📦 Controle de Estoque — 7 Lojas")
-        st.error("O sistema ainda não está conectado ao Supabase.")
-        st.markdown("Abra o arquivo `README.md` do projeto e configure `SUPABASE_URL` e `SUPABASE_ANON_KEY`.")
+        st.error("Erro na conexão com o Supabase.")
         st.stop()
 
     user_id = st.session_state.get("supabase_user_id")
@@ -466,32 +519,33 @@ def main():
         st.stop()
 
     if not restore_auth_session(client):
-        st.warning("Sua sessão expirou. Entre novamente.")
+        st.warning("Sessão expirada.")
         st.rerun()
 
     profile = load_profile(client, user_id)
     if not profile:
-        st.error("Seu login existe, mas ainda não está associado a um perfil de acesso. Peça à administração para concluir seu cadastro.")
+        st.error("Perfil de acesso não encontrado no Supabase.")
         if st.button("Sair"):
             sign_out()
         st.stop()
 
     st.session_state.profile = profile
-    display_name = profile.get("display_name") or st.session_state.get("supabase_email", "Usuário")
+    display_name = profile.get("display_name") or "Usuário"
+    
     with st.sidebar:
-        st.title("📦 Controle de Estoque")
-        st.write(f"Olá, **{display_name}**")
-        st.caption("Perfil: Administrador" if profile.get("role") == "admin" else f"Loja: {get_store_name(client, profile.get('store_id'))}")
+        st.markdown("<h2 style='text-align:center; color: #2A1200; margin-bottom: 0;'>🏠 CM MARMITARIA</h2>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align:center; font-size: 0.75rem; color: #4A2300; font-weight: 700;'>QUALIDADE | SABOR | TRADIÇÃO</p>", unsafe_allow_html=True)
         st.divider()
-        if st.button("Sair da conta", use_container_width=True):
+        st.markdown(f"👤 **{display_name}**")
+        st.caption("Acesso: Administrador" if profile.get("role") == "admin" else f"Loja: {get_store_name(client, profile.get('store_id'))}")
+        st.divider()
+        if st.button("🚪 Sair da Conta", use_container_width=True):
             sign_out()
 
     if profile.get("role") == "admin":
         admin_dashboard(client, profile)
     elif profile.get("role") == "staff" and profile.get("store_id"):
         staff_screen(client, profile)
-    else:
-        st.error("Este perfil está incompleto. Peça à administração para conferir o papel e a loja vinculada.")
 
 
 if __name__ == "__main__":
