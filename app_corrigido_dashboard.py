@@ -22,7 +22,7 @@ PRODUCTS = ["Marmitex pequena", "Marmitex grande", "Refrigerantes Peq", "Pudim",
 BUCKET = "stock-photos"
 USERNAME_EMAIL_DOMAIN = "estoque.invalid"
 
-# Estilização CSS com Bloquinhos de Bordas Arredondadas e Faixinha Colorida
+# Estilização CSS
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap');
@@ -80,10 +80,10 @@ html, body, [class*="css"] {
     font-weight: 600;
 }
 
-/* Bloquinho de Acompanhamento (Design Quadrado Arredondado com Faixinha Topo) */
+/* Bloquinho de Acompanhamento */
 .acomp-card {
     background: #FFFFFF;
-    border: 2px solid #F472B6; /* Faixa/Borda Rosa Elegante */
+    border: 2px solid #F472B6;
     border-radius: 16px;
     overflow: hidden;
     margin-bottom: 1.2rem;
@@ -278,7 +278,6 @@ def upload_photo(client: Client, uploaded_file, store_id: str, user_id: str):
     return path
 
 
-# CORREÇÃO DO SALVAMENTO (APIError resolvido com tipos seguros)
 def save_form_data(client: Client, profile: dict, entry_type: str, form_data: dict, photos_data: dict, notes_data: dict, general_note: str, fin_data: dict = None, fin_photos: dict = None, fin_notes: dict = None):
     user_id = str(profile["user_id"])
     store_id = str(profile["store_id"])
@@ -289,7 +288,6 @@ def save_form_data(client: Client, profile: dict, entry_type: str, form_data: di
     for product in PRODUCTS:
         qty = int(form_data.get(product, 0))
         
-        # Garante tratamento de foto seguro (se não tiver foto, passa None limpo)
         p_path = None
         if photos_data and photos_data.get(product):
             try:
@@ -300,12 +298,19 @@ def save_form_data(client: Client, profile: dict, entry_type: str, form_data: di
         prod_obs = notes_data.get(product, "").strip() if notes_data else ""
         
         note_parts = []
+        if entry_type == "abertura":
+            note_parts.append("[ABERTURA]")
+        elif entry_type == "acompanhamento":
+            note_parts.append("[ACOMPANHAMENTO]")
+        elif entry_type == "fechamento":
+            note_parts.append("[FECHAMENTO]")
+
         if prod_obs:
-            note_parts.append(prod_obs)
+            note_parts.append(f"Obs Item: {prod_obs}")
         if general_note and general_note.strip():
             note_parts.append(f"Obs Geral: {general_note.strip()}")
 
-        clean_note = " | ".join(note_parts) if note_parts else ""
+        clean_note = " | ".join(note_parts)
         
         prod_name = f"FECHAMENTO - {product}" if entry_type == "fechamento" else product
         if entry_type == "abertura":
@@ -321,7 +326,6 @@ def save_form_data(client: Client, profile: dict, entry_type: str, form_data: di
             "created_at": created_at,
         })
         
-    # Adiciona as linhas financeiras de Fechamento sem corromper tipos no banco
     if entry_type == "fechamento" and fin_data:
         card_ph_path = None
         if fin_photos and fin_photos.get("card"):
@@ -501,6 +505,14 @@ def signed_photo_url(client: Client, path: str):
         return None
 
 
+def clean_display_note(note_raw):
+    if not note_raw or not isinstance(note_raw, str):
+        return ""
+    # Remove tags internas do sistema
+    text = note_raw.replace("[ACOMPANHAMENTO]", "").replace("[ABERTURA]", "").replace("[FECHAMENTO]", "").strip(" |").strip()
+    return text
+
+
 # Painel do Administrador
 def admin_dashboard(client: Client, profile: dict):
     known_store_labels = {
@@ -550,7 +562,6 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
         entries = client.table("stock_entries").select(
             "id, store_id, user_id, product, quantity_remaining, photo_path, notes, created_at"
         ).order("created_at", desc=True).limit(5000).execute().data or []
-        profiles = client.table("profiles").select("user_id, display_name").execute().data or []
     except Exception:
         st.error("Erro ao carregar dados do Supabase.")
         return
@@ -605,9 +616,7 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
             s_resp = staff_by_store[sid]
             st_data = df_ab_today[df_ab_today["store_id"] == sid] if not df_ab_today.empty else pd.DataFrame()
             
-            m_g = 0
-            m_p = 0
-            time_txt = "Pendente"
+            m_g, m_p, time_txt = 0, 0, "Pendente"
             
             if not st_data.empty:
                 time_txt = st_data.sort_values("created_at", ascending=False)["Hora"].iloc[0]
@@ -624,7 +633,9 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                         last_items = st_data.sort_values("created_at").groupby("product").last().reset_index()
                         for _, r in last_items.iterrows():
                             clean_p_name = r["product"].replace("ABERTURA - ", "")
-                            st.write(f"• **{clean_p_name}**: {int(r['quantity_remaining'])} un. | *Obs:* {r['notes']}")
+                            obs_text = clean_display_note(r['notes'])
+                            obs_str = f" | *Obs:* {obs_text}" if obs_text else ""
+                            st.write(f"• **{clean_p_name}**: {int(r['quantity_remaining'])} un.{obs_str}")
                             if pd.notnull(r.get("photo_path")) and str(r["photo_path"]).strip():
                                 url = signed_photo_url(client, r["photo_path"])
                                 if url:
@@ -632,9 +643,17 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                     else:
                         st.info("Nenhum registro de abertura para esta loja hoje.")
 
-    # 2. ABA DE ACOMPANHAMENTO DO DIA (DESIGN EM BLOQUINHOS SOLICITADO)
+    # 2. ABA DE ACOMPANHAMENTO DO DIA (FILTRO EXCLUSIVO LIMPO)
     with tab_meio_dia:
-        df_md_today = df[(~df["product"].str.contains("FECHAMENTO", na=False) & ~df["product"].str.contains("ABERTURA", na=False)) & (df["dt_object"].dt.date == today_date)] if not df.empty else pd.DataFrame()
+        # Filtro Rigoroso: pega apenas itens de acompanhamento gravados hoje, ignorando Maquininha, Dinheiro e Abertura/Fechamento velhos
+        if not df.empty:
+            df_md_today = df[
+                (df["dt_object"].dt.date == today_date) & 
+                (df["notes"].str.contains("ACOMPANHAMENTO", na=False) | (~df["product"].str.contains("FECHAMENTO", na=False) & ~df["product"].str.contains("ABERTURA", na=False) & ~df["notes"].str.contains("Maquininha", na=False)))
+            ]
+        else:
+            df_md_today = pd.DataFrame()
+
         registered_stores_md = set(df_md_today["store_id"].unique()) if not df_md_today.empty else set()
         
         pending_md = [display_names[str(s["id"])] for s in stores if str(s["id"]) not in registered_stores_md]
@@ -655,9 +674,7 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
             s_resp = staff_by_store[sid]
             st_data = df_md_today[df_md_today["store_id"] == sid] if not df_md_today.empty else pd.DataFrame()
             
-            m_g = 0
-            m_p = 0
-            time_txt = "Pendente"
+            m_g, m_p, time_txt = 0, 0, "Pendente"
             
             if not st_data.empty:
                 time_txt = st_data.sort_values("created_at", ascending=False)["Hora"].iloc[0]
@@ -669,7 +686,6 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                     m_p = int(mp_row.iloc[0]["quantity_remaining"])
 
             with cols[idx % 2]:
-                # Bloquinho de Design com Faixinha Rosa
                 st.markdown(f"""
                 <div class="acomp-card">
                     <div class="acomp-card-header">
@@ -688,12 +704,18 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                 
                 with st.expander(f"🔎 Ver Estoque Completo da {s_name}", expanded=False):
                     if not st_data.empty:
-                        for _, r in st_data.iterrows():
-                            st.write(f"• [{r['Hora']}] **{r['product']}**: {int(r['quantity_remaining'])} un. | *Obs:* {r['notes']}")
-                            if pd.notnull(r.get("photo_path")) and str(r["photo_path"]).strip():
-                                url = signed_photo_url(client, r["photo_path"])
-                                if url:
-                                    st.image(url, width=150)
+                        # Exibe unicamente o último lançamento dos produtos válidos do acompanhamento
+                        last_items = st_data.sort_values("created_at").groupby("product").last().reset_index()
+                        for _, r in last_items.iterrows():
+                            p_clean = r['product'].replace("FECHAMENTO - ", "").replace("ABERTURA - ", "")
+                            if p_clean in PRODUCTS:
+                                obs_text = clean_display_note(r['notes'])
+                                obs_str = f" | *Obs:* {obs_text}" if obs_text else ""
+                                st.write(f"• **{p_clean}**: **{int(r['quantity_remaining'])} un.**{obs_str}")
+                                if pd.notnull(r.get("photo_path")) and str(r["photo_path"]).strip():
+                                    url = signed_photo_url(client, r["photo_path"])
+                                    if url:
+                                        st.image(url, width=150)
                     else:
                         st.info("Nenhuma atualização enviada hoje para esta loja.")
 
@@ -720,9 +742,7 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
             s_resp = staff_by_store[sid]
             st_data = df_fc_today[df_fc_today["store_id"] == sid] if not df_fc_today.empty else pd.DataFrame()
             
-            m_g = 0
-            m_p = 0
-            time_txt = "Pendente"
+            m_g, m_p, time_txt = 0, 0, "Pendente"
             
             if not st_data.empty:
                 time_txt = st_data.sort_values("created_at", ascending=False)["Hora"].iloc[0]
@@ -738,14 +758,17 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                     if not st_data.empty:
                         for _, r in st_data.iterrows():
                             clean_p_name = r["product"].replace("FECHAMENTO - ", "")
+                            obs_text = clean_display_note(r['notes'])
+                            obs_str = f" | *Obs:* {obs_text}" if obs_text else ""
+                            
                             if "Maquininha" in clean_p_name or "Dinheiro" in clean_p_name:
-                                st.write(f"💰 **{clean_p_name}**: *Obs/Valor:* {r['notes']}")
+                                st.write(f"💰 **{clean_p_name}**: {obs_text}")
                                 if pd.notnull(r.get("photo_path")) and str(r["photo_path"]).strip():
                                     url = signed_photo_url(client, r["photo_path"])
                                     if url:
                                         st.image(url, width=200, caption="Comprovante Maquininha")
                             else:
-                                st.write(f"• **{clean_p_name}**: Sobraram **{int(r['quantity_remaining'])} un.** | *Obs:* {r['notes']}")
+                                st.write(f"• **{clean_p_name}**: Sobraram **{int(r['quantity_remaining'])} un.**{obs_str}")
                     else:
                         st.info("Fechamento ainda não enviado para esta loja hoje.")
 
