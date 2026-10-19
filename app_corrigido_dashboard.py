@@ -22,7 +22,7 @@ PRODUCTS = ["Marmitex pequena", "Marmitex grande", "Refrigerantes Peq", "Pudim",
 BUCKET = "stock-photos"
 USERNAME_EMAIL_DOMAIN = "estoque.invalid"
 
-# Estilização CSS com Bloquinhos Uniformes para Todas as Abas
+# Estilização CSS com Cards Personalizados e Identidade Mantida
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap');
@@ -80,62 +80,13 @@ html, body, [class*="css"] {
     font-weight: 600;
 }
 
-/* Bloquinhos Padrão (Abertura, Acompanhamento, Fechamento) */
-.custom-card {
-    background: #FFFFFF;
-    border-radius: 16px;
-    overflow: hidden;
-    margin-bottom: 1.2rem;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-}
-
-/* Faixinhas Coloridas */
-.card-header-amber {
-    background: linear-gradient(90deg, #F59E0B 0%, #D97706 100%);
-    border: 2px solid #F59E0B;
-}
-.card-header-pink {
-    background: linear-gradient(90deg, #EC4899 0%, #DB2777 100%);
-    border: 2px solid #EC4899;
-}
-.card-header-purple {
-    background: linear-gradient(90deg, #8B5CF6 0%, #6D28D9 100%);
-    border: 2px solid #8B5CF6;
-}
-
-.custom-card-header {
-    color: #FFFFFF;
-    padding: 0.75rem 1.2rem;
-    font-weight: 800;
-    font-size: 1.1rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-.custom-card-body {
-    padding: 1rem 1.2rem;
-    border-left: 2px solid #E2E8F0;
-    border-right: 2px solid #E2E8F0;
-    border-bottom: 2px solid #E2E8F0;
-    border-bottom-left-radius: 16px;
-    border-bottom-right-radius: 16px;
-}
-.custom-card-resp {
-    font-size: 0.85rem;
-    color: #334155;
-    font-weight: 700;
-    margin-bottom: 0.6rem;
-}
-.custom-card-marmitas {
-    display: flex;
-    gap: 1.2rem;
-    background: #F8FAFC;
-    border: 1px solid #E2E8F0;
-    padding: 0.6rem 0.9rem;
-    border-radius: 10px;
-    font-weight: 700;
-    color: #1E293B;
-    margin-bottom: 0.5rem;
+/* Ajustes dos Expanders das Lojas */
+div[data-testid="stExpander"] {
+    border-radius: 16px !important;
+    border: 1px solid #E2E8F0 !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+    margin-bottom: 1rem !important;
+    overflow: hidden !important;
 }
 
 /* Botões Gerais */
@@ -281,22 +232,25 @@ def optimize_image(uploaded_file, max_width=1200, quality=80):
 def upload_photo(client: Client, uploaded_file, store_id: str, user_id: str):
     if uploaded_file is None:
         return None
-    suffix = os.path.splitext(uploaded_file.name)[1].lower()
-    if suffix not in [".jpg", ".jpeg", ".png", ".webp"]:
-        raise ValueError("Use uma imagem JPG, PNG ou WEBP.")
-    
-    optimized_bytes = optimize_image(uploaded_file)
-    path = f"{store_id}/{user_id}/{uuid.uuid4().hex}.jpg"
-    
-    client.storage.from_(BUCKET).upload(
-        path,
-        optimized_bytes,
-        {"content-type": "image/jpeg", "upsert": "false"},
-    )
-    return path
+    try:
+        suffix = os.path.splitext(uploaded_file.name)[1].lower()
+        if suffix not in [".jpg", ".jpeg", ".png", ".webp"]:
+            return None
+        
+        optimized_bytes = optimize_image(uploaded_file)
+        path = f"{store_id}/{user_id}/{uuid.uuid4().hex}.jpg"
+        
+        client.storage.from_(BUCKET).upload(
+            path,
+            optimized_bytes,
+            {"content-type": "image/jpeg", "upsert": "false"},
+        )
+        return path
+    except Exception:
+        return None
 
 
-# SALVAMENTO SEGURO (Previne o APIError gravando item por item)
+# SALVAMENTO SEGURO
 def save_form_data(client: Client, profile: dict, entry_type: str, form_data: dict, photos_data: dict, notes_data: dict, general_note: str, fin_data: dict = None, fin_photos: dict = None, fin_notes: dict = None):
     user_id = str(profile["user_id"])
     store_id = str(profile["store_id"])
@@ -307,10 +261,7 @@ def save_form_data(client: Client, profile: dict, entry_type: str, form_data: di
         
         p_path = None
         if photos_data and photos_data.get(product):
-            try:
-                p_path = upload_photo(client, photos_data.get(product), store_id, user_id)
-            except Exception:
-                p_path = None
+            p_path = upload_photo(client, photos_data.get(product), store_id, user_id)
         
         prod_obs = notes_data.get(product, "").strip() if notes_data else ""
         
@@ -347,10 +298,7 @@ def save_form_data(client: Client, profile: dict, entry_type: str, form_data: di
     if entry_type == "fechamento" and fin_data:
         card_ph_path = None
         if fin_photos and fin_photos.get("card"):
-            try:
-                card_ph_path = upload_photo(client, fin_photos.get("card"), store_id, user_id)
-            except Exception:
-                card_ph_path = None
+            card_ph_path = upload_photo(client, fin_photos.get("card"), store_id, user_id)
                 
         card_obs = fin_notes.get("card", "").strip() if fin_notes else ""
         card_val_int = int(round(float(fin_data.get("card", 0.0))))
@@ -410,7 +358,6 @@ def staff_screen(client: Client, profile: dict):
     </div>
     """, unsafe_allow_html=True)
 
-    # Confirmação visual de envio com mensagem e balões
     if st.session_state.get("form_success_msg"):
         st.success(st.session_state.form_success_msg)
         st.balloons()
@@ -455,7 +402,7 @@ def staff_screen(client: Client, profile: dict):
                     st.session_state.form_success_msg = "✅ Seu envio do ESTOQUE INICIAL foi salvo e enviado com sucesso para a administradora!"
                     st.rerun()
                 except Exception as e:
-                    st.error("Ocorreu um erro ao salvar o formulário. Verifique sua conexão e tente novamente.")
+                    st.error("Ocorreu um erro ao salvar o formulário. Tente novamente.")
 
     # 2. REGISTRAR ESTOQUE DO DIA (ACOMPANHAMENTO)
     elif flow_mode == "meio_dia":
@@ -482,7 +429,7 @@ def staff_screen(client: Client, profile: dict):
                     st.session_state.form_success_msg = "✅ Seu envio de ATUALIZAÇÃO DE ESTOQUE foi salvo e enviado com sucesso para a administradora!"
                     st.rerun()
                 except Exception as e:
-                    st.error("Ocorreu um erro ao salvar o formulário. Verifique sua conexão e tente novamente.")
+                    st.error("Ocorreu um erro ao salvar o formulário. Tente novamente.")
 
     # 3. FECHAMENTO DO DIA
     elif flow_mode == "fechamento":
@@ -522,7 +469,7 @@ def staff_screen(client: Client, profile: dict):
                     st.session_state.form_success_msg = "✅ Seu FECHAMENTO FINAL foi salvo e enviado com sucesso para a administradora!"
                     st.rerun()
                 except Exception as e:
-                    st.error("Ocorreu um erro ao salvar o fechamento. Verifique sua conexão e tente novamente.")
+                    st.error("Ocorreu um erro ao salvar o fechamento. Tente novamente.")
 
 
 def signed_photo_url(client: Client, path: str):
@@ -619,7 +566,7 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
         "🌙 3. Fechamento Final"
     ])
 
-    # 1. ABA DE ABERTURA DO DIA (VISUAL EM BLOQUINHO PADRÃO)
+    # 1. ABA DE ABERTURA DO DIA (CLIQUE NO PRÓPRIO TÍTULO EXPANDE O CARD)
     with tab_abertura:
         df_ab_today = df[(df["notes"].str.contains("ABERTURA", na=False) | df["product"].str.contains("ABERTURA", na=False)) & (df["dt_object"].dt.date == today_date)] if not df.empty else pd.DataFrame()
         registered_stores_ab = set(df_ab_today["store_id"].unique()) if not df_ab_today.empty else set()
@@ -654,23 +601,8 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                     m_p = int(mp_row.iloc[0]["quantity_remaining"])
 
             with cols[idx % 2]:
-                st.markdown(f"""
-                <div class="custom-card">
-                    <div class="custom-card-header card-header-amber">
-                        <span>☀️ {s_name}</span>
-                        <span style="font-size: 0.8rem; background: rgba(255,255,255,0.25); padding: 0.2rem 0.6rem; border-radius: 6px;">🕒 {time_txt}</span>
-                    </div>
-                    <div class="custom-card-body">
-                        <div class="custom-card-resp">👤 Responsável: <strong>{s_resp}</strong></div>
-                        <div class="custom-card-marmitas">
-                            <div>🍲 Marmitas Pequenas: <strong>{m_p} un.</strong></div>
-                            <div>🍲 Marmitas Grandes: <strong>{m_g} un.</strong></div>
-                        </div>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                with st.expander(f"🔎 Ver Estoque Inicial da {s_name}", expanded=False):
+                header_title = f"☀️ {s_name} · Resp: {s_resp} (Marmita Peq: {m_p} un. | Grande: {m_g} un.) — 🕒 {time_txt}"
+                with st.expander(header_title, expanded=False):
                     if not st_data.empty:
                         last_items = st_data.sort_values("created_at").groupby("product").last().reset_index()
                         for _, r in last_items.iterrows():
@@ -678,15 +610,19 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                             if p_clean in PRODUCTS:
                                 obs_text = clean_display_note(r['notes'])
                                 obs_str = f" | *Obs:* {obs_text}" if obs_text else ""
-                                st.write(f"• **{p_clean}**: **{int(r['quantity_remaining'])} un.**{obs_str}")
+                                
+                                c_item1, c_item2 = st.columns([3, 1])
+                                c_item1.write(f"• **{p_clean}**: **{int(r['quantity_remaining'])} un.**{obs_str}")
+                                
                                 if pd.notnull(r.get("photo_path")) and str(r["photo_path"]).strip():
                                     url = signed_photo_url(client, r["photo_path"])
                                     if url:
-                                        st.image(url, width=150)
+                                        with c_item2.popover("📷 Ver Foto"):
+                                            st.image(url, use_container_width=True)
                     else:
                         st.info("Nenhum registro de abertura para esta loja hoje.")
 
-    # 2. ABA DE ACOMPANHAMENTO DO DIA (VISUAL EM BLOQUINHO ROSA)
+    # 2. ABA DE ACOMPANHAMENTO DO DIA
     with tab_meio_dia:
         if not df.empty:
             df_md_today = df[
@@ -728,23 +664,8 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                     m_p = int(mp_row.iloc[0]["quantity_remaining"])
 
             with cols[idx % 2]:
-                st.markdown(f"""
-                <div class="custom-card">
-                    <div class="custom-card-header card-header-pink">
-                        <span>🔄 {s_name}</span>
-                        <span style="font-size: 0.8rem; background: rgba(255,255,255,0.25); padding: 0.2rem 0.6rem; border-radius: 6px;">🕒 {time_txt}</span>
-                    </div>
-                    <div class="custom-card-body">
-                        <div class="custom-card-resp">👤 Responsável: <strong>{s_resp}</strong></div>
-                        <div class="custom-card-marmitas">
-                            <div>🍲 Marmitas Pequenas: <strong>{m_p} un.</strong></div>
-                            <div>🍲 Marmitas Grandes: <strong>{m_g} un.</strong></div>
-                        </div>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                with st.expander(f"🔎 Ver Estoque Completo da {s_name}", expanded=False):
+                header_title = f"🔄 {s_name} · Resp: {s_resp} (Marmita Peq: {m_p} un. | Grande: {m_g} un.) — 🕒 {time_txt}"
+                with st.expander(header_title, expanded=False):
                     if not st_data.empty:
                         last_items = st_data.sort_values("created_at").groupby("product").last().reset_index()
                         for _, r in last_items.iterrows():
@@ -752,15 +673,19 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                             if p_clean in PRODUCTS:
                                 obs_text = clean_display_note(r['notes'])
                                 obs_str = f" | *Obs:* {obs_text}" if obs_text else ""
-                                st.write(f"• **{p_clean}**: **{int(r['quantity_remaining'])} un.**{obs_str}")
+                                
+                                c_item1, c_item2 = st.columns([3, 1])
+                                c_item1.write(f"• **{p_clean}**: **{int(r['quantity_remaining'])} un.**{obs_str}")
+                                
                                 if pd.notnull(r.get("photo_path")) and str(r["photo_path"]).strip():
                                     url = signed_photo_url(client, r["photo_path"])
                                     if url:
-                                        st.image(url, width=150)
+                                        with c_item2.popover("📷 Ver Foto"):
+                                            st.image(url, use_container_width=True)
                     else:
                         st.info("Nenhuma atualização enviada hoje para esta loja.")
 
-    # 3. ABA DE FECHAMENTO FINAL (VISUAL EM BLOQUINHO ROXO)
+    # 3. ABA DE FECHAMENTO FINAL (MOSTRA MAQUININHA E DINHEIRO NA FRENTE DO CARD)
     with tab_fechamento:
         df_fc_today = df[(df["product"].str.contains("FECHAMENTO", na=False)) & (df["dt_object"].dt.date == today_date)] if not df.empty else pd.DataFrame()
         registered_stores_fc = set(df_fc_today["store_id"].unique()) if not df_fc_today.empty else set()
@@ -783,49 +708,37 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
             s_resp = staff_by_store[sid]
             st_data = df_fc_today[df_fc_today["store_id"] == sid] if not df_fc_today.empty else pd.DataFrame()
             
-            m_g, m_p, time_txt = 0, 0, "Pendente"
+            val_card, val_cash, time_txt = 0.0, 0.0, "Pendente"
             
             if not st_data.empty:
                 time_txt = st_data.sort_values("created_at", ascending=False)["Hora"].iloc[0]
-                mg_row = st_data[st_data["product"].str.contains("Marmitex grande", na=False)]
-                mp_row = st_data[st_data["product"].str.contains("Marmitex pequena", na=False)]
-                if not mg_row.empty:
-                    m_g = int(mg_row.iloc[0]["quantity_remaining"])
-                if not mp_row.empty:
-                    m_p = int(mp_row.iloc[0]["quantity_remaining"])
+                card_row = st_data[st_data["product"].str.contains("Maquininha", na=False)]
+                cash_row = st_data[st_data["product"].str.contains("Dinheiro", na=False)]
+                if not card_row.empty:
+                    val_card = float(card_row.iloc[0]["quantity_remaining"])
+                if not cash_row.empty:
+                    val_cash = float(cash_row.iloc[0]["quantity_remaining"])
 
             with cols[idx % 2]:
-                st.markdown(f"""
-                <div class="custom-card">
-                    <div class="custom-card-header card-header-purple">
-                        <span>🌙 {s_name}</span>
-                        <span style="font-size: 0.8rem; background: rgba(255,255,255,0.25); padding: 0.2rem 0.6rem; border-radius: 6px;">🕒 {time_txt}</span>
-                    </div>
-                    <div class="custom-card-body">
-                        <div class="custom-card-resp">👤 Responsável: <strong>{s_resp}</strong></div>
-                        <div class="custom-card-marmitas">
-                            <div>🍲 Sobra Pequena: <strong>{m_p} un.</strong></div>
-                            <div>🍲 Sobra Grande: <strong>{m_g} un.</strong></div>
-                        </div>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                with st.expander(f"🔎 Ver Fechamento Final e Caixa da {s_name}", expanded=False):
+                header_title = f"🌙 {s_name} · Resp: {s_resp} (💳 Maquininha: R$ {val_card:.2f} | 💵 Dinheiro: R$ {val_cash:.2f}) — 🕒 {time_txt}"
+                with st.expander(header_title, expanded=False):
                     if not st_data.empty:
                         for _, r in st_data.iterrows():
                             clean_p_name = r["product"].replace("FECHAMENTO - ", "")
                             obs_text = clean_display_note(r['notes'])
                             obs_str = f" | *Obs:* {obs_text}" if obs_text else ""
                             
+                            c_item1, c_item2 = st.columns([3, 1])
+                            
                             if "Maquininha" in clean_p_name or "Dinheiro" in clean_p_name:
-                                st.write(f"💰 **{clean_p_name}**: {obs_text}")
+                                c_item1.write(f"💰 **{clean_p_name}**: R$ {r['quantity_remaining']:.2f}{obs_str}")
                                 if pd.notnull(r.get("photo_path")) and str(r["photo_path"]).strip():
                                     url = signed_photo_url(client, r["photo_path"])
                                     if url:
-                                        st.image(url, width=200, caption="Comprovante Maquininha")
+                                        with c_item2.popover("📷 Ver Comprovante"):
+                                            st.image(url, use_container_width=True)
                             else:
-                                st.write(f"• **{clean_p_name}**: Sobraram **{int(r['quantity_remaining'])} un.**{obs_str}")
+                                c_item1.write(f"• **{clean_p_name}**: Sobraram **{int(r['quantity_remaining'])} un.**{obs_str}")
                     else:
                         st.info("Fechamento ainda não enviado para esta loja hoje.")
 
