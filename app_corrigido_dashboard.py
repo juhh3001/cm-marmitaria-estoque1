@@ -1,7 +1,6 @@
 import os
 import uuid
 import zoneinfo
-import base64
 from datetime import datetime, timezone
 
 import pandas as pd
@@ -21,7 +20,7 @@ PRODUCTS = ["Marmitex pequena", "Marmitex grande", "Refrigerante pequeno", "Refr
 BUCKET = "stock-photos"
 USERNAME_EMAIL_DOMAIN = "estoque.invalid"
 
-# CSS Profissional Limpo - Amarelo da Marca, Cartões Organizados e Texto 100% Legível
+# CSS Profissional com Wallpaper de Fundo, Letras Brancas na Sidebar e Card de Data Ajustado
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800;900&display=swap');
@@ -30,59 +29,88 @@ html, body, [class*="css"] {
     font-family: 'Plus Jakarta Sans', sans-serif;
 }
 
-/* Fundo Geral da Aplicação Limpo e Claro */
+/* Fundo Geral da Aplicação com Wallpaper / Textura Elegante */
 .stApp {
-    background-color: #F1F5F9 !important;
+    background-color: #F8FAFC !important;
+    background-image: radial-gradient(#E2E8F0 1px, transparent 1px) !important;
+    background-size: 20px 20px !important;
 }
 
-/* Remove sobreposições do topo */
+/* Garante margem do topo para nada ser cortado */
 .block-container {
-    padding-top: 1.5rem !important;
+    padding-top: 2.5rem !important;
     padding-bottom: 3rem !important;
     max-width: 1500px !important;
 }
 
-/* Menu Lateral em Amarelo Ouro com Texto Escuro */
+/* Menu Lateral Amarelo/Escuro com Texto 100% Branco */
 [data-testid="stSidebar"] {
-    background-color: #FFCC00 !important;
-    border-right: 2px solid #E69900 !important;
+    background: linear-gradient(180deg, #1E170A 0%, #2D210F 100%) !important;
+    border-right: 3px solid #FFCC00 !important;
 }
 [data-testid="stSidebar"] * {
-    color: #2A1200 !important;
+    color: #FFFFFF !important; /* LETRAS BRANCAS NO MENU ESQUERDO */
 }
 
-/* Botões do Menu Lateral */
+/* Botões do Menu Lateral em Letras Brancas e Destaque Amarelo */
 [data-testid="stSidebar"] div.stButton > button {
-    background-color: #2A1200 !important;
-    color: #FFCC00 !important;
+    background-color: #3D2D14 !important;
+    color: #FFFFFF !important;
     font-weight: 800 !important;
-    font-size: 0.9rem !important;
+    font-size: 0.95rem !important;
     border-radius: 10px !important;
-    border: none !important;
-    margin-bottom: 0.3rem !important;
-    padding: 0.5rem 1rem !important;
+    border: 1px solid #FFCC00 !important;
+    margin-bottom: 0.4rem !important;
+    padding: 0.55rem 1rem !important;
+    text-align: left !important;
 }
 [data-testid="stSidebar"] div.stButton > button:hover {
-    background-color: #4A2300 !important;
-    color: #FFFFFF !important;
+    background-color: #FFCC00 !important;
+    color: #1E170A !important;
 }
 
-/* Logo no Canto Superior do Menu */
+/* Logo no Canto Superior da Sidebar */
 .sidebar-logo-box {
     text-align: center;
     padding: 0.5rem 0 1rem 0;
+    border-bottom: 2px solid #FFCC00;
+    margin-bottom: 1rem;
 }
 .sidebar-logo-box h2 {
-    color: #2A1200;
+    color: #FFCC00 !important;
     font-weight: 900;
-    font-size: 1.4rem;
+    font-size: 1.5rem;
     margin: 0;
 }
 .sidebar-logo-box p {
-    color: #5C2B00;
+    color: #FFFFFF !important;
     font-size: 0.7rem;
     font-weight: 800;
     margin: 0;
+}
+
+/* Card Destacado da "Última Atualização" Ajustado Mais para Baixo */
+.update-card-box {
+    background: #FFFFFF;
+    border: 2px solid #FFCC00;
+    border-radius: 14px;
+    padding: 0.8rem 1.2rem;
+    text-align: right;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    margin-top: 0.5rem; /* Afasta da faixa branca do topo */
+}
+.update-card-title {
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: #854D0E;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.update-card-value {
+    font-size: 0.95rem;
+    font-weight: 900;
+    color: #0F172A;
+    margin-top: 0.1rem;
 }
 
 /* Metric Cards do Topo */
@@ -107,7 +135,7 @@ html, body, [class*="css"] {
     margin-top: 0.2rem;
 }
 
-/* Card das Lojas na Visão Geral (Apenas Marmitas) */
+/* Card das Lojas */
 .overview-store-card {
     background: #FFFFFF;
     border: 1px solid #CBD5E1;
@@ -168,7 +196,7 @@ html, body, [class*="css"] {
 /* Botões do Sistema */
 div.stButton > button, [data-testid="stFormSubmitButton"] button {
     background: #FFCC00 !important;
-    color: #2A1200 !important;
+    color: #1E170A !important;
     font-weight: 800 !important;
     border: 1px solid #E69900 !important;
     border-radius: 8px !important;
@@ -218,9 +246,9 @@ def login_screen(client: Client):
     with c2:
         st.markdown("""
         <div style='text-align: center; background: #FFCC00; border: 2px solid #E69900; padding: 2.5rem; border-radius: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.08);'>
-            <h1 style='color: #2A1200; font-size: 2.2rem; font-weight: 900; margin: 0;'>🏠 CM MARMITARIA</h1>
+            <h1 style='color: #1E170A; font-size: 2.2rem; font-weight: 900; margin: 0;'>🏠 CM MARMITARIA</h1>
             <p style='color: #4A2300; font-size: 0.85rem; font-weight: 800; letter-spacing: 1px;'>CONTROLE DE ESTOQUE E FECHAMENTO</p>
-            <hr style='border: 1px solid #2A1200; margin: 1.2rem 0;'>
+            <hr style='border: 1px solid #1E170A; margin: 1.2rem 0;'>
         </div>
         """, unsafe_allow_html=True)
         
@@ -411,8 +439,8 @@ def admin_dashboard(client: Client, profile: dict):
 
     now_time = datetime.now(TZ_BR).strftime("%d/%m/%Y às %H:%M:%S")
 
-    # Cabeçalho Limpo
-    c_top_l, c_top_r = st.columns([3, 1.2])
+    # Cabeçalho com o Card de Atualização bem Visível e Abaixado
+    c_top_l, c_top_r = st.columns([3, 1.3])
     with c_top_l:
         st.markdown("""
         <div>
@@ -423,9 +451,9 @@ def admin_dashboard(client: Client, profile: dict):
     
     with c_top_r:
         st.markdown(f"""
-        <div style="background: #FFFFFF; padding: 0.8rem 1rem; border-radius: 12px; border: 1px solid #CBD5E1; text-align: right;">
-            <div style="font-size: 0.75rem; font-weight: 700; color: #64748B;">ÚLTIMA SINCRONIZAÇÃO</div>
-            <div style="font-size: 0.9rem; font-weight: 800; color: #0F172A;">{now_time}</div>
+        <div class="update-card-box">
+            <div class="update-card-title">🕒 Última Sincronização</div>
+            <div class="update-card-value">{now_time}</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -704,7 +732,7 @@ def main():
     st.session_state.profile = profile
     display_name = profile.get("display_name") or "Usuário"
     
-    # Sidebar Estilizada com Logo
+    # Sidebar Estilizada com Logo e Textos em Branco Puro
     with st.sidebar:
         st.markdown("""
         <div class="sidebar-logo-box">
@@ -712,7 +740,6 @@ def main():
             <p>QUALIDADE | SABOR | TRADIÇÃO</p>
         </div>
         """, unsafe_allow_html=True)
-        st.divider()
         
         if st.button("📌 Visão Geral (Marmitas)", use_container_width=True):
             st.session_state.menu_page = "lojas"
