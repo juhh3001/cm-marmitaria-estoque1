@@ -305,13 +305,12 @@ def upload_photo(client: Client, uploaded_file, store_id: str, user_id: str):
         return None
 
 
-# SALVAMENTO SALVANDO A FOTO DA MAQUININHA DE FORMA SEGURA
+# SALVAMENTO
 def save_form_data(client: Client, profile: dict, entry_type: str, form_data: dict, photos_data: dict, notes_data: dict, general_note: str, fin_data: dict = None, fin_photos: dict = None, fin_notes: dict = None):
     user_id = str(profile["user_id"])
     store_id = str(profile["store_id"])
     created_at = datetime.now(timezone.utc).isoformat()
     
-    # Salva a foto da maquininha se enviada
     card_ph_path = None
     if entry_type == "fechamento" and fin_photos and fin_photos.get("card"):
         card_ph_path = upload_photo(client, fin_photos.get("card"), store_id, user_id)
@@ -326,7 +325,6 @@ def save_form_data(client: Client, profile: dict, entry_type: str, form_data: di
         if photos_data and photos_data.get(product):
             p_path = upload_photo(client, photos_data.get(product), store_id, user_id)
         
-        # Se for fechamento e o produto for o primeiro, associa a foto da maquininha
         if entry_type == "fechamento" and product == "Marmitex pequena" and card_ph_path:
             p_path = card_ph_path
 
@@ -364,6 +362,27 @@ def save_form_data(client: Client, profile: dict, entry_type: str, form_data: di
             "created_at": created_at,
         }
         client.table("stock_entries").insert(row).execute()
+
+
+# DELEÇÃO DE REGISTROS
+def delete_single_entry(client: Client, entry_id: str):
+    try:
+        client.table("stock_entries").delete().eq("id", entry_id).execute()
+        st.toast("🗑️ Item apagado com sucesso!")
+        st.rerun()
+    except Exception as e:
+        st.error(f"Erro ao apagar item: {e}")
+
+
+def delete_all_entries_for_store_and_tag(client: Client, df_store, tag: str):
+    try:
+        ids_to_delete = df_store["id"].tolist()
+        if ids_to_delete:
+            client.table("stock_entries").delete().in_("id", ids_to_delete).execute()
+            st.toast(f"🧹 Todos os lançamentos de {tag} desta loja foram apagados!")
+            st.rerun()
+    except Exception as e:
+        st.error(f"Erro ao apagar lançamentos: {e}")
 
 
 # Interface das Funcionárias
@@ -682,19 +701,28 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                 
                 with st.expander(f"🔎 Ver Estoque Inicial Completo - {s_name}", expanded=False):
                     if not st_data.empty:
+                        # Botão para apagar todos os lançamentos de abertura desta loja
+                        if st.button(f"🧹 Apagar Abertura da {s_name}", key=f"del_all_ab_{sid}"):
+                            delete_all_entries_for_store_and_tag(client, st_data, "Abertura")
+
+                        st.divider()
+                        
                         last_items = st_data.sort_values("created_at").groupby("product").last().reset_index()
                         for _, r in last_items.iterrows():
                             p_clean = r['product']
                             if p_clean in PRODUCTS:
                                 obs_text = clean_display_note(r['notes'])
                                 obs_str = f" | *Obs:* {obs_text}" if obs_text else ""
-                                c_item1, c_item2 = st.columns([3, 1])
+                                c_item1, c_item2, c_del = st.columns([3, 1, 0.4])
                                 c_item1.write(f"• **{p_clean}**: **{int(r['quantity_remaining'])} un.**{obs_str}")
                                 if pd.notnull(r.get("photo_path")) and str(r["photo_path"]).strip():
                                     url = signed_photo_url(client, r["photo_path"])
                                     if url:
                                         with c_item2.popover("📷 Ver Foto"):
                                             st.image(url, use_container_width=True)
+                                
+                                if c_del.button("🗑️", key=f"del_item_ab_{r['id']}"):
+                                    delete_single_entry(client, str(r['id']))
                     else:
                         st.info("Nenhum registro de abertura para esta loja hoje.")
 
@@ -755,23 +783,32 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                 
                 with st.expander(f"🔎 Ver Estoque Completo - {s_name}", expanded=False):
                     if not st_data.empty:
+                        # Botão para apagar acompanhamento
+                        if st.button(f"🧹 Apagar Acompanhamento da {s_name}", key=f"del_all_md_{sid}"):
+                            delete_all_entries_for_store_and_tag(client, st_data, "Acompanhamento")
+
+                        st.divider()
+
                         last_items = st_data.sort_values("created_at").groupby("product").last().reset_index()
                         for _, r in last_items.iterrows():
                             p_clean = r['product']
                             if p_clean in PRODUCTS:
                                 obs_text = clean_display_note(r['notes'])
                                 obs_str = f" | *Obs:* {obs_text}" if obs_text else ""
-                                c_item1, c_item2 = st.columns([3, 1])
+                                c_item1, c_item2, c_del = st.columns([3, 1, 0.4])
                                 c_item1.write(f"• **{p_clean}**: **{int(r['quantity_remaining'])} un.**{obs_str}")
                                 if pd.notnull(r.get("photo_path")) and str(r["photo_path"]).strip():
                                     url = signed_photo_url(client, r["photo_path"])
                                     if url:
                                         with c_item2.popover("📷 Ver Foto"):
                                             st.image(url, use_container_width=True)
+
+                                if c_del.button("🗑️", key=f"del_item_md_{r['id']}"):
+                                    delete_single_entry(client, str(r['id']))
                     else:
                         st.info("Nenhuma atualização enviada hoje para esta loja.")
 
-    # 3. ABA DE FECHAMENTO FINAL (INCLUI MAQUININHA + BOTÃO DA FOTO DO COMPROVANTE)
+    # 3. ABA DE FECHAMENTO FINAL
     with tab_fechamento:
         df_fc_today = df[(df["notes"].str.contains("FECHAMENTO", na=False)) & (df["dt_object"].dt.date == today_date)] if not df.empty else pd.DataFrame()
         registered_stores_fc = set(df_fc_today["store_id"].unique()) if not df_fc_today.empty else set()
@@ -819,6 +856,12 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                 
                 with st.expander(f"🔎 Ver Sobras e Detalhes do Fechamento - {s_name}", expanded=False):
                     if not st_data.empty:
+                        # Botão para apagar fechamento completo
+                        if st.button(f"🧹 Apagar Fechamento Completo da {s_name}", key=f"del_all_fc_{sid}"):
+                            delete_all_entries_for_store_and_tag(client, st_data, "Fechamento")
+
+                        st.divider()
+
                         # Exibe a linha do Financeiro
                         c_fin1, c_fin2 = st.columns([3, 1])
                         c_fin1.write(f"💳 **Maquininha**: **R$ {val_card:.2f}** | 💵 **Dinheiro**: **R$ {val_cash:.2f}**")
@@ -837,7 +880,11 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                             if p_clean in PRODUCTS:
                                 obs_text = clean_display_note(r['notes'])
                                 obs_str = f" | *Obs:* {obs_text}" if obs_text else ""
-                                st.write(f"• **{p_clean}**: **{int(r['quantity_remaining'])} un.**{obs_str}")
+                                c_item1, c_del = st.columns([3, 0.4])
+                                c_item1.write(f"• **{p_clean}**: **{int(r['quantity_remaining'])} un.**{obs_str}")
+                                
+                                if c_del.button("🗑️", key=f"del_item_fc_{r['id']}"):
+                                    delete_single_entry(client, str(r['id']))
                     else:
                         st.info("Fechamento ainda não enviado para esta loja hoje.")
 
