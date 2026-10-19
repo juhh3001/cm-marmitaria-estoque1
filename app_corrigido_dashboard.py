@@ -415,37 +415,46 @@ def admin_dashboard(client: Client, profile: dict):
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    tab_overview, tab_stores, tab_history, tab_reports = st.tabs(["📌 Visão Geral Lojas", "🏪 Consulta por Loja", "📜 Histórico Geral", "📊 Relatório Consolidado"])
+    # Abas atualizadas com o que você pediu
+    tab_overview, tab_stores, tab_carteirinhas, tab_history, tab_reports = st.tabs([
+        "📌 Resumo de Marmitas", 
+        "🏪 Gerenciar por Loja", 
+        "🏷️ Carteirinhas de Estoque", 
+        "📜 Histórico Geral", 
+        "📊 Relatório"
+    ])
 
     with tab_overview:
-        st.markdown("### Status de Atualização das 7 Lojas")
+        st.markdown("### 🍲 Resumo de Marmitas por Responsável")
+        st.caption("Visão focada na quantidade de marmitas pequenas e grandes de cada unidade.")
+        
         cards = st.columns(3)
         for idx, store in enumerate(stores):
             sid = str(store["id"])
             name = display_names[sid]
+            resp = staff_by_store[sid]
+            
             store_latest = latest[latest["store_id"] == sid] if not latest.empty else latest
-            store_rows = df[df["store_id"] == sid] if not df.empty else df
-            last_time = store_rows["created_at"].max() if not store_rows.empty else pd.NaT
-            has_today = pd.notna(last_time) and last_time.tz_convert("America/Sao_Paulo").date() == today
-            qty = int(pd.to_numeric(store_latest.get("quantity_remaining", pd.Series(dtype=float)), errors="coerce").fillna(0).sum()) if not store_latest.empty else 0
-
-            # Formata a última vez exata que mexeu (dia e horário com minutos/segundos)
-            if pd.notna(last_time):
-                last_time_str = last_time.tz_convert("America/Sao_Paulo").strftime("%d/%m/%Y às %H:%M")
-            else:
-                last_time_str = "Nunca atualizado"
+            
+            # Pega especificamente a quantidade de marmitas pequenas e grandes
+            m_pequena = 0
+            m_grande = 0
+            if not store_latest.empty:
+                p_eq = store_latest[store_latest["product"] == "Marmitex pequena"]
+                if not p_eq.empty:
+                    m_pequena = int(p_eq["quantity_remaining"].values[0])
+                p_gr = store_latest[store_latest["product"] == "Marmitex grande"]
+                if not p_gr.empty:
+                    m_grande = int(p_gr["quantity_remaining"].values[0])
 
             with cards[idx % 3]:
-                status_badge = '<span class="badge badge-success">Atualizado Hoje</span>' if has_today else '<span class="badge badge-warning">Pendente Hoje</span>'
                 st.markdown(f"""
                 <div class="store-box">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong style="color: #2A1200; font-size: 1.1rem;">🏪 {name}</strong>
-                        {status_badge}
-                    </div>
-                    <p style="color: #64748B; font-size: 0.8rem; margin: 0.25rem 0 0.2rem 0;">Responsável: <strong>{staff_by_store[sid]}</strong></p>
-                    <p style="color: #8C4A00; font-size: 0.75rem; margin: 0 0 0.75rem 0;">Última vez: <strong>{last_time_str}</strong></p>
-                    <h3 style="color: #D97706; margin: 0; font-size: 1.5rem;">{qty} <span style="font-size: 0.9rem; color: #64748B;">itens em estoque</span></h3>
+                    <strong style="color: #2A1200; font-size: 1.1rem;">🏪 {name}</strong>
+                    <p style="color: #64748B; font-size: 0.85rem; margin: 0.2rem 0 0.75rem 0;">Responsável: <strong>{resp}</strong></p>
+                    <hr style="border: 1px solid #FFE082; margin: 0.5rem 0;">
+                    <p style="margin: 0.2rem 0; color: #2A1200;">• Marmitex Pequena: <strong>{m_pequena} un.</strong></p>
+                    <p style="margin: 0.2rem 0; color: #2A1200;">• Marmitex Grande: <strong>{m_grande} un.</strong></p>
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -456,16 +465,17 @@ def admin_dashboard(client: Client, profile: dict):
         sid = options[selected_label]
         store_latest = latest[latest["store_id"] == sid] if not latest.empty else latest
 
-        # Botão para apagar TUDO daquela loja específica
         col_del_all, _ = st.columns([1, 2])
         with col_del_all:
-            if st.button(f"🗑️ Apagar todas as alterações desta loja", key=f"del_all_{sid}", type="secondary"):
-                try:
-                    client.table("stock_entries").delete().eq("store_id", sid).execute()
-                    st.success("Todos os registros desta loja foram apagados com sucesso!")
-                    st.rerun()
-                except Exception:
-                    st.error("Erro ao apagar os registros da loja.")
+            with st.popover("⚠️ Apagar TODOS os registros desta loja"):
+                st.warning("Tem certeza? Esta ação apagará todo o histórico e lançamentos desta loja.")
+                if st.button("Confirmar e Apagar Tudo", key=f"confirm_del_all_{sid}"):
+                    try:
+                        client.table("stock_entries").delete().eq("store_id", sid).execute()
+                        st.success("Registros apagados com sucesso!")
+                        st.rerun()
+                    except Exception:
+                        st.error("Erro ao apagar os registros.")
 
         st.markdown("<hr>", unsafe_allow_html=True)
 
@@ -483,7 +493,6 @@ def admin_dashboard(client: Client, profile: dict):
                 else:
                     c3.caption("Sem foto")
 
-                # Botão para apagar um item/linha específica pelo ID do banco
                 row_id = row.get("id")
                 if c4.button("🗑️ Apagar", key=f"del_row_{row_id}"):
                     try:
@@ -496,10 +505,52 @@ def admin_dashboard(client: Client, profile: dict):
         else:
             st.info("Nenhum lançamento ativo para esta loja.")
 
+    with tab_carteirinhas:
+        st.markdown("### 🏷️ Carteirinhas de Estoque Completo de Todas as Lojas")
+        st.caption("Visão geral simultânea com o estoque de cada produto por unidade, sem precisar usar filtros.")
+        
+        for store in stores:
+            sid = str(store["id"])
+            name = display_names[sid]
+            resp = staff_by_store[sid]
+            store_latest = latest[latest["store_id"] == sid] if not latest.empty else pd.DataFrame()
+            
+            # Monta um dicionário com os produtos daquela loja
+            prod_qtys = {p: 0 for p in PRODUCTS}
+            if not store_latest.empty:
+                for _, r in store_latest.iterrows():
+                    prod_name = r["product"]
+                    if prod_name in prod_qtys:
+                        prod_qtys[prod_name] = int(r["quantity_remaining"])
+
+            st.markdown(f"""
+            <div class="store-box">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <strong style="color: #2A1200; font-size: 1.2rem;">🏪 {name}</strong>
+                    <span style="color: #64748B; font-size: 0.85rem;">Responsável: <strong>{resp}</strong></span>
+                </div>
+                <hr style="border: 1px solid #FFE082; margin: 0.5rem 0;">
+                <div style="display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 0.5rem;">
+                    <div>🍲 Pequena: <strong>{prod_qtys['Marmitex pequena']} un.</strong></div>
+                    <div>🍲 Grande: <strong>{prod_qtys['Marmitex grande']} un.</strong></div>
+                    <div>🥤 Refri Peq: <strong>{prod_qtys['Refrigerantes Peq']} un.</strong></div>
+                    <div>🍮 Pudim: <strong>{prod_qtys['Pudim']} un.</strong></div>
+                    <div>🥤 Lata: <strong>{prod_qtys['Refrigerante lata']} un.</strong></div>
+                    <div>💧 Água: <strong>{prod_qtys['Água']} un.</strong></div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
     with tab_history:
         st.markdown("### Histórico Geral de Lançamentos")
         if not df.empty:
-            st.dataframe(df[["Loja", "product", "quantity_remaining", "Data e hora", "Funcionária", "notes"]], use_container_width=True, hide_index=True)
+            st.dataframe(
+                df[["Loja", "product", "quantity_remaining", "Data e hora", "Funcionária", "notes"]],
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            st.info("Nenhum lançamento registrado até o momento.")
 
     with tab_reports:
         st.markdown("### Visão por Produto")
