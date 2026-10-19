@@ -364,118 +364,147 @@ def admin_dashboard(client: Client, profile: dict):
     </div>
     """, unsafe_allow_html=True)
 
-    @st.fragment(run_every=300)
-    def live_panel():
-        try:
-            stores = client.table("stores").select("id, name").execute().data or []
-            entries = client.table("stock_entries").select(
-                "id, store_id, user_id, product, quantity_remaining, photo_path, notes, created_at"
-            ).order("created_at", desc=True).limit(2000).execute().data or []
-            profiles = client.table("profiles").select("user_id, display_name").execute().data or []
-        except Exception:
-            st.error("Erro ao carregar dados do Supabase.")
-            return
+    try:
+        stores = client.table("stores").select("id, name").execute().data or []
+        entries = client.table("stock_entries").select(
+            "id, store_id, user_id, product, quantity_remaining, photo_path, notes, created_at"
+        ).order("created_at", desc=True).limit(2000).execute().data or []
+        profiles = client.table("profiles").select("user_id, display_name").execute().data or []
+    except Exception:
+        st.error("Erro ao carregar dados do Supabase.")
+        return
 
-        if not stores:
-            st.warning("Nenhuma loja cadastrada.")
-            return
+    if not stores:
+        st.warning("Nenhuma loja cadastrada.")
+        return
 
-        store_names = {str(x["id"]): str(x.get("name") or "Unidade") for x in stores}
-        display_names = {key: display_store_name(value)[0] for key, value in store_names.items()}
-        staff_by_store = {key: display_store_name(value)[1] for key, value in store_names.items()}
-        profile_names = {str(x["user_id"]): x.get("display_name") or "Usuário" for x in profiles}
-        
-        df = pd.DataFrame(entries)
-        if not df.empty:
-            df["store_id"] = df["store_id"].astype(str)
-            df["Loja"] = df["store_id"].map(display_names).fillna("Unidade")
-            df["Funcionária"] = df["user_id"].astype(str).map(profile_names).fillna("Usuário")
-            df["created_at"] = pd.to_datetime(df["created_at"], errors="coerce", utc=True)
-            df["Data e hora"] = df["created_at"].dt.tz_convert("America/Sao_Paulo").dt.strftime("%d/%m/%Y %H:%M")
-            latest = df.dropna(subset=["created_at"]).sort_values("created_at").groupby(["store_id", "product"], as_index=False).tail(1)
-        else:
-            latest = pd.DataFrame(columns=["store_id", "product", "quantity_remaining", "created_at", "Loja", "Data e hora", "Funcionária", "photo_path", "notes"])
+    store_names = {str(x["id"]): str(x.get("name") or "Unidade") for x in stores}
+    display_names = {key: display_store_name(value)[0] for key, value in store_names.items()}
+    staff_by_store = {key: display_store_name(value)[1] for key, value in store_names.items()}
+    profile_names = {str(x["user_id"]): x.get("display_name") or "Usuário" for x in profiles}
+    
+    df = pd.DataFrame(entries)
+    if not df.empty:
+        df["store_id"] = df["store_id"].astype(str)
+        df["Loja"] = df["store_id"].map(display_names).fillna("Unidade")
+        df["Funcionária"] = df["user_id"].astype(str).map(profile_names).fillna("Usuário")
+        df["created_at"] = pd.to_datetime(df["created_at"], errors="coerce", utc=True)
+        df["Data e hora"] = df["created_at"].dt.tz_convert("America/Sao_Paulo").dt.strftime("%d/%m/%Y %H:%M:%S")
+        latest = df.dropna(subset=["created_at"]).sort_values("created_at").groupby(["store_id", "product"], as_index=False).tail(1)
+    else:
+        latest = pd.DataFrame(columns=["store_id", "product", "quantity_remaining", "created_at", "Loja", "Data e hora", "Funcionária", "photo_path", "notes"])
 
-        # Indicadores Gerais
-        total_stores = len(stores)
-        today = pd.Timestamp.now(tz="America/Sao_Paulo").date()
-        total_latest_units = int(pd.to_numeric(latest.get("quantity_remaining", pd.Series(dtype=float)), errors="coerce").fillna(0).sum()) if not latest.empty else 0
-        entries_today = int((df["created_at"].dt.tz_convert("America/Sao_Paulo").dt.date == today).sum()) if not df.empty else 0
+    # Indicadores Gerais
+    total_stores = len(stores)
+    today = pd.Timestamp.now(tz="America/Sao_Paulo").date()
+    total_latest_units = int(pd.to_numeric(latest.get("quantity_remaining", pd.Series(dtype=float)), errors="coerce").fillna(0).sum()) if not latest.empty else 0
+    entries_today = int((df["created_at"].dt.tz_convert("America/Sao_Paulo").dt.date == today).sum()) if not df.empty else 0
 
-        total_value = 0
-        if not latest.empty:
-            for _, row in latest.iterrows():
-                p_name = row["product"]
-                p_qty = row["quantity_remaining"]
-                total_value += p_qty * PRODUCT_PRICES.get(p_name, 0.0)
+    total_value = 0
+    if not latest.empty:
+        for _, row in latest.iterrows():
+            p_name = row["product"]
+            p_qty = row["quantity_remaining"]
+            total_value += p_qty * PRODUCT_PRICES.get(p_name, 0.0)
 
-        k1, k2, k3, k4 = st.columns(4)
-        k1.markdown(f'<div class="kpi-card"><div class="kpi-title">Lojas Ativas</div><div class="kpi-value">{total_stores} Unidades</div></div>', unsafe_allow_html=True)
-        k2.markdown(f'<div class="kpi-card"><div class="kpi-title">Estoque Total</div><div class="kpi-value">{total_latest_units} un.</div></div>', unsafe_allow_html=True)
-        k3.markdown(f'<div class="kpi-card"><div class="kpi-title">Valor Estimado</div><div class="kpi-value">R$ {total_value:,.2f}</div></div>', unsafe_allow_html=True)
-        k4.markdown(f'<div class="kpi-card"><div class="kpi-title">Lançamentos Hoje</div><div class="kpi-value">{entries_today}</div></div>', unsafe_allow_html=True)
+    k1, k2, k3, k4 = st.columns(4)
+    k1.markdown(f'<div class="kpi-card"><div class="kpi-title">Lojas Ativas</div><div class="kpi-value">{total_stores} Unidades</div></div>', unsafe_allow_html=True)
+    k2.markdown(f'<div class="kpi-card"><div class="kpi-title">Estoque Total</div><div class="kpi-value">{total_latest_units} un.</div></div>', unsafe_allow_html=True)
+    k3.markdown(f'<div class="kpi-card"><div class="kpi-title">Valor Estimado</div><div class="kpi-value">R$ {total_value:,.2f}</div></div>', unsafe_allow_html=True)
+    k4.markdown(f'<div class="kpi-card"><div class="kpi-title">Lançamentos Hoje</div><div class="kpi-value">{entries_today}</div></div>', unsafe_allow_html=True)
 
-        st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
 
-        tab_overview, tab_stores, tab_history, tab_reports = st.tabs(["📌 Visão Geral Lojas", "🏪 Consulta por Loja", "📜 Histórico Geral", "📊 Relatório Consolidado"])
+    tab_overview, tab_stores, tab_history, tab_reports = st.tabs(["📌 Visão Geral Lojas", "🏪 Consulta por Loja", "📜 Histórico Geral", "📊 Relatório Consolidado"])
 
-        with tab_overview:
-            st.markdown("### Status de Atualização das 7 Lojas")
-            cards = st.columns(3)
-            for idx, store in enumerate(stores):
-                sid = str(store["id"])
-                name = display_names[sid]
-                store_latest = latest[latest["store_id"] == sid] if not latest.empty else latest
-                store_rows = df[df["store_id"] == sid] if not df.empty else df
-                last_time = store_rows["created_at"].max() if not store_rows.empty else pd.NaT
-                has_today = pd.notna(last_time) and last_time.tz_convert("America/Sao_Paulo").date() == today
-                qty = int(pd.to_numeric(store_latest.get("quantity_remaining", pd.Series(dtype=float)), errors="coerce").fillna(0).sum()) if not store_latest.empty else 0
-
-                with cards[idx % 3]:
-                    status_badge = '<span class="badge badge-success">Atualizado Hoje</span>' if has_today else '<span class="badge badge-warning">Pendente Hoje</span>'
-                    st.markdown(f"""
-                    <div class="store-box">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <strong style="color: #2A1200; font-size: 1.1rem;">🏪 {name}</strong>
-                            {status_badge}
-                        </div>
-                        <p style="color: #64748B; font-size: 0.85rem; margin: 0.25rem 0 0.75rem 0;">Responsável: <strong>{staff_by_store[sid]}</strong></p>
-                        <h3 style="color: #D97706; margin: 0; font-size: 1.5rem;">{qty} <span style="font-size: 0.9rem; color: #64748B;">itens em estoque</span></h3>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-        with tab_stores:
-            st.markdown("### Detalhes por Loja")
-            options = {display_names[str(store["id"])]: str(store["id"]) for store in stores}
-            selected_label = st.selectbox("Escolha a Loja", list(options.keys()))
-            sid = options[selected_label]
+    with tab_overview:
+        st.markdown("### Status de Atualização das 7 Lojas")
+        cards = st.columns(3)
+        for idx, store in enumerate(stores):
+            sid = str(store["id"])
+            name = display_names[sid]
             store_latest = latest[latest["store_id"] == sid] if not latest.empty else latest
+            store_rows = df[df["store_id"] == sid] if not df.empty else df
+            last_time = store_rows["created_at"].max() if not store_rows.empty else pd.NaT
+            has_today = pd.notna(last_time) and last_time.tz_convert("America/Sao_Paulo").date() == today
+            qty = int(pd.to_numeric(store_latest.get("quantity_remaining", pd.Series(dtype=float)), errors="coerce").fillna(0).sum()) if not store_latest.empty else 0
 
-            if not store_latest.empty:
-                for _, row in store_latest.iterrows():
-                    c1, c2, c3 = st.columns([3, 1, 1])
-                    c1.markdown(f"**{row['product']}**")
-                    c2.markdown(f"**{int(row['quantity_remaining'])} un.**")
-                    path = row.get("photo_path")
-                    url = signed_photo_url(client, path) if isinstance(path, str) and path.strip() else None
-                    if url:
-                        with c3.popover("📷 Ver Foto"):
-                            st.image(url, use_container_width=True)
-                    else:
-                        c3.caption("Sem foto")
-                    st.divider()
+            # Formata a última vez exata que mexeu (dia e horário com minutos/segundos)
+            if pd.notna(last_time):
+                last_time_str = last_time.tz_convert("America/Sao_Paulo").strftime("%d/%m/%Y às %H:%M")
+            else:
+                last_time_str = "Nunca atualizado"
 
-        with tab_history:
-            st.markdown("### Histórico de Lançamentos")
-            if not df.empty:
-                st.dataframe(df[["Loja", "product", "quantity_remaining", "Data e hora", "Funcionária", "notes"]], use_container_width=True, hide_index=True)
+            with cards[idx % 3]:
+                status_badge = '<span class="badge badge-success">Atualizado Hoje</span>' if has_today else '<span class="badge badge-warning">Pendente Hoje</span>'
+                st.markdown(f"""
+                <div class="store-box">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong style="color: #2A1200; font-size: 1.1rem;">🏪 {name}</strong>
+                        {status_badge}
+                    </div>
+                    <p style="color: #64748B; font-size: 0.8rem; margin: 0.25rem 0 0.2rem 0;">Responsável: <strong>{staff_by_store[sid]}</strong></p>
+                    <p style="color: #8C4A00; font-size: 0.75rem; margin: 0 0 0.75rem 0;">Última vez: <strong>{last_time_str}</strong></p>
+                    <h3 style="color: #D97706; margin: 0; font-size: 1.5rem;">{qty} <span style="font-size: 0.9rem; color: #64748B;">itens em estoque</span></h3>
+                </div>
+                """, unsafe_allow_html=True)
 
-        with tab_reports:
-            st.markdown("### Visão por Produto")
-            if not latest.empty:
-                st.bar_chart(latest.groupby("product")["quantity_remaining"].sum())
+    with tab_stores:
+        st.markdown("### Detalhes por Loja e Exclusão de Registros")
+        options = {display_names[str(store["id"])]: str(store["id"]) for store in stores}
+        selected_label = st.selectbox("Escolha a Loja para gerenciar", list(options.keys()))
+        sid = options[selected_label]
+        store_latest = latest[latest["store_id"] == sid] if not latest.empty else latest
 
-    live_panel()
+        # Botão para apagar TUDO daquela loja específica
+        col_del_all, _ = st.columns([1, 2])
+        with col_del_all:
+            if st.button(f"🗑️ Apagar todas as alterações desta loja", key=f"del_all_{sid}", type="secondary"):
+                try:
+                    client.table("stock_entries").delete().eq("store_id", sid).execute()
+                    st.success("Todos os registros desta loja foram apagados com sucesso!")
+                    st.rerun()
+                except Exception:
+                    st.error("Erro ao apagar os registros da loja.")
+
+        st.markdown("<hr>", unsafe_allow_html=True)
+
+        if not store_latest.empty:
+            for _, row in store_latest.iterrows():
+                c1, c2, c3, c4 = st.columns([2.5, 1, 1, 1])
+                c1.markdown(f"**{row['product']}**")
+                c2.markdown(f"**{int(row['quantity_remaining'])} un.**")
+                
+                path = row.get("photo_path")
+                url = signed_photo_url(client, path) if isinstance(path, str) and path.strip() else None
+                if url:
+                    with c3.popover("📷 Ver Foto"):
+                        st.image(url, use_container_width=True)
+                else:
+                    c3.caption("Sem foto")
+
+                # Botão para apagar um item/linha específica pelo ID do banco
+                row_id = row.get("id")
+                if c4.button("🗑️ Apagar", key=f"del_row_{row_id}"):
+                    try:
+                        client.table("stock_entries").delete().eq("id", row_id).execute()
+                        st.success("Item apagado!")
+                        st.rerun()
+                    except Exception:
+                        st.error("Erro ao apagar o item.")
+                st.divider()
+        else:
+            st.info("Nenhum lançamento ativo para esta loja.")
+
+    with tab_history:
+        st.markdown("### Histórico Geral de Lançamentos")
+        if not df.empty:
+            st.dataframe(df[["Loja", "product", "quantity_remaining", "Data e hora", "Funcionária", "notes"]], use_container_width=True, hide_index=True)
+
+    with tab_reports:
+        st.markdown("### Visão por Produto")
+        if not latest.empty:
+            st.bar_chart(latest.groupby("product")["quantity_remaining"].sum())
 
 
 def main():
