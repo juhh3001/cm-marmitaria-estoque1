@@ -22,7 +22,7 @@ PRODUCTS = ["Marmitex pequena", "Marmitex grande", "Refrigerantes Peq", "Pudim",
 BUCKET = "stock-photos"
 USERNAME_EMAIL_DOMAIN = "estoque.invalid"
 
-# Estilização CSS RESTAURADA (Cores específicas por setor)
+# Estilização CSS Mantida (Com cores de cada setor e bloquinhos arredondados)
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap');
@@ -305,14 +305,19 @@ def upload_photo(client: Client, uploaded_file, store_id: str, user_id: str):
         return None
 
 
+# SALVAMENTO TOTALMENTE COMPATÍVEL E ROBUSTO (Evita erros de API)
 def save_form_data(client: Client, profile: dict, entry_type: str, form_data: dict, photos_data: dict, notes_data: dict, general_note: str, fin_data: dict = None, fin_photos: dict = None, fin_notes: dict = None):
     user_id = str(profile["user_id"])
     store_id = str(profile["store_id"])
     created_at = datetime.now(timezone.utc).isoformat()
     
+    # Prepara as linhas de estoque utilizando tipos estritamente inteiros
     for product in PRODUCTS:
-        qty = int(form_data.get(product, 0))
-        
+        try:
+            qty = int(form_data.get(product, 0))
+        except (ValueError, TypeError):
+            qty = 0
+            
         p_path = None
         if photos_data and photos_data.get(product):
             p_path = upload_photo(client, photos_data.get(product), store_id, user_id)
@@ -334,14 +339,10 @@ def save_form_data(client: Client, profile: dict, entry_type: str, form_data: di
 
         clean_note = " | ".join(note_parts)
         
-        prod_name = f"FECHAMENTO - {product}" if entry_type == "fechamento" else product
-        if entry_type == "abertura":
-            prod_name = f"ABERTURA - {product}"
-            
         row = {
             "store_id": store_id,
             "user_id": user_id,
-            "product": prod_name,
+            "product": product, # Mantém o nome exato do produto no banco
             "quantity_remaining": qty,
             "photo_path": p_path,
             "notes": clean_note,
@@ -349,33 +350,42 @@ def save_form_data(client: Client, profile: dict, entry_type: str, form_data: di
         }
         client.table("stock_entries").insert(row).execute()
         
+    # Insere linhas financeiras apenas no fechamento
     if entry_type == "fechamento" and fin_data:
         card_ph_path = None
         if fin_photos and fin_photos.get("card"):
             card_ph_path = upload_photo(client, fin_photos.get("card"), store_id, user_id)
                 
         card_obs = fin_notes.get("card", "").strip() if fin_notes else ""
-        card_val_int = int(round(float(fin_data.get("card", 0.0))))
+        try:
+            card_val = float(fin_data.get("card", 0.0))
+        except (ValueError, TypeError):
+            card_val = 0.0
+            
         row_card = {
             "store_id": store_id,
             "user_id": user_id,
-            "product": "FECHAMENTO - Maquininha",
-            "quantity_remaining": card_val_int,
+            "product": "Maquininha",
+            "quantity_remaining": int(round(card_val)),
             "photo_path": card_ph_path,
-            "notes": f"Valor R$ {fin_data.get('card', 0.0):.2f} | {card_obs}".strip(" |"),
+            "notes": f"[FECHAMENTO] Valor R$ {card_val:.2f} | {card_obs}".strip(" |"),
             "created_at": created_at,
         }
         client.table("stock_entries").insert(row_card).execute()
         
         cash_obs = fin_notes.get("cash", "").strip() if fin_notes else ""
-        cash_val_int = int(round(float(fin_data.get("cash", 0.0))))
+        try:
+            cash_val = float(fin_data.get("cash", 0.0))
+        except (ValueError, TypeError):
+            cash_val = 0.0
+            
         row_cash = {
             "store_id": store_id,
             "user_id": user_id,
-            "product": "FECHAMENTO - Dinheiro",
-            "quantity_remaining": cash_val_int,
+            "product": "Dinheiro",
+            "quantity_remaining": int(round(cash_val)),
             "photo_path": None,
-            "notes": f"Valor R$ {fin_data.get('cash', 0.0):.2f} | {cash_obs}".strip(" |"),
+            "notes": f"[FECHAMENTO] Valor R$ {cash_val:.2f} | {cash_obs}".strip(" |"),
             "created_at": created_at,
         }
         client.table("stock_entries").insert(row_cash).execute()
@@ -451,9 +461,12 @@ def staff_screen(client: Client, profile: dict):
 
             gen_note = st.text_area("Observação Geral do Início do Dia", placeholder="Alguma observação importante do início?")
             if st.form_submit_button("✅ ENVIAR ESTOQUE INICIAL", use_container_width=True):
-                save_form_data(client, profile, "abertura", form_data, photos_data, notes_data, gen_note)
-                st.session_state.form_success_msg = "✅ Seu envio do ESTOQUE INICIAL foi salvo e enviado com sucesso para a administradora!"
-                st.rerun()
+                try:
+                    save_form_data(client, profile, "abertura", form_data, photos_data, notes_data, gen_note)
+                    st.session_state.form_success_msg = "🎉 SEU ENVIO DO ESTOQUE INICIAL FOI SALVO E ENVIADO COM SUCESSO PARA A ADMINISTRADORA!"
+                    st.rerun()
+                except Exception as err:
+                    st.error(f"Erro ao salvar: {err}")
 
     # 2. REGISTRAR ESTOQUE DO DIA (ACOMPANHAMENTO)
     elif flow_mode == "meio_dia":
@@ -475,9 +488,12 @@ def staff_screen(client: Client, profile: dict):
 
             gen_note = st.text_area("Observação Geral do Lançamento", placeholder="Obs geral sobre o estoque de agora...")
             if st.form_submit_button("✅ ENVIAR ATUALIZAÇÃO DE ESTOQUE", use_container_width=True):
-                save_form_data(client, profile, "acompanhamento", form_data, photos_data, notes_data, gen_note)
-                st.session_state.form_success_msg = "✅ Seu envio de ATUALIZAÇÃO DE ESTOQUE foi salvo e enviado com sucesso para a administradora!"
-                st.rerun()
+                try:
+                    save_form_data(client, profile, "acompanhamento", form_data, photos_data, notes_data, gen_note)
+                    st.session_state.form_success_msg = "🎉 SEU ENVIO DE ATUALIZAÇÃO DE ESTOQUE FOI SALVO E ENVIADO COM SUCESSO PARA A ADMINISTRADORA!"
+                    st.rerun()
+                except Exception as err:
+                    st.error(f"Erro ao salvar: {err}")
 
     # 3. FECHAMENTO DO DIA
     elif flow_mode == "fechamento":
@@ -509,12 +525,15 @@ def staff_screen(client: Client, profile: dict):
             gen_note = st.text_area("Observação Geral Final do Fechamento", placeholder="Algum recado final do dia?")
             
             if st.form_submit_button("✅ ENVIAR FECHAMENTO FINAL", use_container_width=True):
-                fin_data = {"card": card_val, "cash": cash_val}
-                fin_photos = {"card": card_photo}
-                fin_notes = {"card": card_note, "cash": cash_note}
-                save_form_data(client, profile, "fechamento", form_data, None, notes_data, gen_note, fin_data, fin_photos, fin_notes)
-                st.session_state.form_success_msg = "✅ Seu FECHAMENTO FINAL foi salvo e enviado com sucesso para a administradora!"
-                st.rerun()
+                try:
+                    fin_data = {"card": card_val, "cash": cash_val}
+                    fin_photos = {"card": card_photo}
+                    fin_notes = {"card": card_note, "cash": cash_note}
+                    save_form_data(client, profile, "fechamento", form_data, None, notes_data, gen_note, fin_data, fin_photos, fin_notes)
+                    st.session_state.form_success_msg = "🎉 SEU FECHAMENTO FINAL FOI SALVO E ENVIADO COM SUCESSO PARA A ADMINISTRADORA!"
+                    st.rerun()
+                except Exception as err:
+                    st.error(f"Erro ao salvar: {err}")
 
 
 def signed_photo_url(client: Client, path: str):
@@ -611,9 +630,9 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
         "🌙 3. Fechamento Final"
     ])
 
-    # 1. ABA DE ABERTURA DO DIA (CARD COM TOP LARANJA RESTAURADO)
+    # 1. ABA DE ABERTURA DO DIA
     with tab_abertura:
-        df_ab_today = df[(df["notes"].str.contains("ABERTURA", na=False) | df["product"].str.contains("ABERTURA", na=False)) & (df["dt_object"].dt.date == today_date)] if not df.empty else pd.DataFrame()
+        df_ab_today = df[(df["notes"].str.contains("ABERTURA", na=False)) & (df["dt_object"].dt.date == today_date)] if not df.empty else pd.DataFrame()
         registered_stores_ab = set(df_ab_today["store_id"].unique()) if not df_ab_today.empty else set()
         
         pending_ab = [display_names[str(s["id"])] for s in stores if str(s["id"]) not in registered_stores_ab]
@@ -638,8 +657,8 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
             
             if not st_data.empty:
                 time_txt = st_data.sort_values("created_at", ascending=False)["Hora"].iloc[0]
-                mg_row = st_data[st_data["product"].str.contains("Marmitex grande", na=False)]
-                mp_row = st_data[st_data["product"].str.contains("Marmitex pequena", na=False)]
+                mg_row = st_data[st_data["product"] == "Marmitex grande"]
+                mp_row = st_data[st_data["product"] == "Marmitex pequena"]
                 if not mg_row.empty:
                     m_g = int(mg_row.iloc[0]["quantity_remaining"])
                 if not mp_row.empty:
@@ -666,7 +685,7 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                     if not st_data.empty:
                         last_items = st_data.sort_values("created_at").groupby("product").last().reset_index()
                         for _, r in last_items.iterrows():
-                            p_clean = r['product'].replace("ABERTURA - ", "")
+                            p_clean = r['product']
                             if p_clean in PRODUCTS:
                                 obs_text = clean_display_note(r['notes'])
                                 obs_str = f" | *Obs:* {obs_text}" if obs_text else ""
@@ -680,13 +699,10 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                     else:
                         st.info("Nenhum registro de abertura para esta loja hoje.")
 
-    # 2. ABA DE ACOMPANHAMENTO DO DIA (CARD COM TOP ROSA RESTAURADO)
+    # 2. ABA DE ACOMPANHAMENTO DO DIA
     with tab_meio_dia:
         if not df.empty:
-            df_md_today = df[
-                (df["dt_object"].dt.date == today_date) & 
-                (df["notes"].str.contains("ACOMPANHAMENTO", na=False) | (~df["product"].str.contains("FECHAMENTO", na=False) & ~df["product"].str.contains("ABERTURA", na=False) & ~df["notes"].str.contains("Maquininha", na=False)))
-            ]
+            df_md_today = df[(df["notes"].str.contains("ACOMPANHAMENTO", na=False)) & (df["dt_object"].dt.date == today_date)]
         else:
             df_md_today = pd.DataFrame()
 
@@ -714,8 +730,8 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
             
             if not st_data.empty:
                 time_txt = st_data.sort_values("created_at", ascending=False)["Hora"].iloc[0]
-                mg_row = st_data[st_data["product"].str.contains("Marmitex grande", na=False)]
-                mp_row = st_data[st_data["product"].str.contains("Marmitex pequena", na=False)]
+                mg_row = st_data[st_data["product"] == "Marmitex grande"]
+                mp_row = st_data[st_data["product"] == "Marmitex pequena"]
                 if not mg_row.empty:
                     m_g = int(mg_row.iloc[0]["quantity_remaining"])
                 if not mp_row.empty:
@@ -742,7 +758,7 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                     if not st_data.empty:
                         last_items = st_data.sort_values("created_at").groupby("product").last().reset_index()
                         for _, r in last_items.iterrows():
-                            p_clean = r['product'].replace("FECHAMENTO - ", "").replace("ABERTURA - ", "")
+                            p_clean = r['product']
                             if p_clean in PRODUCTS:
                                 obs_text = clean_display_note(r['notes'])
                                 obs_str = f" | *Obs:* {obs_text}" if obs_text else ""
@@ -756,9 +772,9 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                     else:
                         st.info("Nenhuma atualização enviada hoje para esta loja.")
 
-    # 3. ABA DE FECHAMENTO FINAL (CARD COM TOP ROXO RESTAURADO E FINANCEIRO NA FRENTE)
+    # 3. ABA DE FECHAMENTO FINAL
     with tab_fechamento:
-        df_fc_today = df[(df["product"].str.contains("FECHAMENTO", na=False)) & (df["dt_object"].dt.date == today_date)] if not df.empty else pd.DataFrame()
+        df_fc_today = df[(df["notes"].str.contains("FECHAMENTO", na=False)) & (df["dt_object"].dt.date == today_date)] if not df.empty else pd.DataFrame()
         registered_stores_fc = set(df_fc_today["store_id"].unique()) if not df_fc_today.empty else set()
         
         pending_fc = [display_names[str(s["id"])] for s in stores if str(s["id"]) not in registered_stores_fc]
@@ -783,8 +799,8 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
             
             if not st_data.empty:
                 time_txt = st_data.sort_values("created_at", ascending=False)["Hora"].iloc[0]
-                card_row = st_data[st_data["product"].str.contains("Maquininha", na=False)]
-                cash_row = st_data[st_data["product"].str.contains("Dinheiro", na=False)]
+                card_row = st_data[st_data["product"] == "Maquininha"]
+                cash_row = st_data[st_data["product"] == "Dinheiro"]
                 if not card_row.empty:
                     val_card = float(card_row.iloc[0]["quantity_remaining"])
                 if not cash_row.empty:
@@ -810,7 +826,7 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                 with st.expander(f"🔎 Ver Sobras e Detalhes do Caixa - {s_name}", expanded=False):
                     if not st_data.empty:
                         for _, r in st_data.iterrows():
-                            clean_p_name = r["product"].replace("FECHAMENTO - ", "")
+                            clean_p_name = r["product"]
                             obs_text = clean_display_note(r['notes'])
                             obs_str = f" | *Obs:* {obs_text}" if obs_text else ""
                             c_item1, c_item2 = st.columns([3, 1])
