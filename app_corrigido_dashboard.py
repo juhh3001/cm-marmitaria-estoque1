@@ -1,6 +1,6 @@
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 
 import pandas as pd
 import streamlit as st
@@ -278,7 +278,7 @@ def add_stock_entries(client: Client, profile: dict, quantities: dict, photos: d
     return client.table("stock_entries").insert(rows).execute()
 
 
-# Interface das Funcionárias (Mobile Otimizado em Amarelo/Marrom)
+# Interface das Funcionárias (Mobile Otimizado)
 def staff_screen(client: Client, profile: dict):
     store_name = get_store_name(client, profile.get("store_id"))
     display_name = profile.get("display_name") or "Funcionária"
@@ -368,7 +368,7 @@ def admin_dashboard(client: Client, profile: dict):
         stores = client.table("stores").select("id, name").execute().data or []
         entries = client.table("stock_entries").select(
             "id, store_id, user_id, product, quantity_remaining, photo_path, notes, created_at"
-        ).order("created_at", desc=True).limit(2000).execute().data or []
+        ).order("created_at", desc=True).limit(5000).execute().data or []
         profiles = client.table("profiles").select("user_id, display_name").execute().data or []
     except Exception:
         st.error("Erro ao carregar dados do Supabase.")
@@ -388,17 +388,21 @@ def admin_dashboard(client: Client, profile: dict):
         df["store_id"] = df["store_id"].astype(str)
         df["Loja"] = df["store_id"].map(display_names).fillna("Unidade")
         df["Funcionária"] = df["user_id"].astype(str).map(profile_names).fillna("Usuário")
-        df["created_at"] = pd.to_datetime(df["created_at"], errors="coerce", utc=True)
-        df["Data e hora"] = df["created_at"].dt.tz_convert("America/Sao_Paulo").dt.strftime("%d/%m/%Y %H:%M:%S")
+        df["dt_object"] = pd.to_datetime(df["created_at"], errors="coerce", utc=True).dt.tz_convert("America/Sao_Paulo")
+        df["Data"] = df["dt_object"].dt.strftime("%d/%m/%Y")
+        df["Hora e Minuto"] = df["dt_object"].dt.strftime("%H:%M:%S")
+        df["Data e Hora"] = df["dt_object"].dt.strftime("%d/%m/%Y %H:%M:%S")
+        
         latest = df.dropna(subset=["created_at"]).sort_values("created_at").groupby(["store_id", "product"], as_index=False).tail(1)
     else:
-        latest = pd.DataFrame(columns=["store_id", "product", "quantity_remaining", "created_at", "Loja", "Data e hora", "Funcionária", "photo_path", "notes"])
+        df["dt_object"] = pd.Series(dtype="datetime64[ns, America/Sao_Paulo]")
+        latest = pd.DataFrame(columns=["store_id", "product", "quantity_remaining", "created_at", "Loja", "Data e Hora", "Funcionária", "photo_path", "notes"])
 
     # Indicadores Gerais
     total_stores = len(stores)
     today = pd.Timestamp.now(tz="America/Sao_Paulo").date()
     total_latest_units = int(pd.to_numeric(latest.get("quantity_remaining", pd.Series(dtype=float)), errors="coerce").fillna(0).sum()) if not latest.empty else 0
-    entries_today = int((df["created_at"].dt.tz_convert("America/Sao_Paulo").dt.date == today).sum()) if not df.empty else 0
+    entries_today = int((df["dt_object"].dt.date == today).sum()) if not df.empty else 0
 
     total_value = 0
     if not latest.empty:
@@ -415,12 +419,12 @@ def admin_dashboard(client: Client, profile: dict):
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Abas atualizadas com o que você pediu
+    # Abas organizadas
     tab_overview, tab_stores, tab_carteirinhas, tab_history, tab_reports = st.tabs([
         "📌 Resumo de Marmitas", 
         "🏪 Gerenciar por Loja", 
         "🏷️ Carteirinhas de Estoque", 
-        "📜 Histórico Geral", 
+        "📜 Histórico & Planilha", 
         "📊 Relatório"
     ])
 
@@ -436,7 +440,6 @@ def admin_dashboard(client: Client, profile: dict):
             
             store_latest = latest[latest["store_id"] == sid] if not latest.empty else latest
             
-            # Pega especificamente a quantidade de marmitas pequenas e grandes
             m_pequena = 0
             m_grande = 0
             if not store_latest.empty:
@@ -468,7 +471,7 @@ def admin_dashboard(client: Client, profile: dict):
         col_del_all, _ = st.columns([1, 2])
         with col_del_all:
             with st.popover("⚠️ Apagar TODOS os registros desta loja"):
-                st.warning("Tem certeza? Esta ação apagará todo o histórico e lançamentos desta loja.")
+                st.warning("Tem certeza? Esta ação apagará o histórico e lançamentos desta loja.")
                 if st.button("Confirmar e Apagar Tudo", key=f"confirm_del_all_{sid}"):
                     try:
                         client.table("stock_entries").delete().eq("store_id", sid).execute()
@@ -515,7 +518,6 @@ def admin_dashboard(client: Client, profile: dict):
             resp = staff_by_store[sid]
             store_latest = latest[latest["store_id"] == sid] if not latest.empty else pd.DataFrame()
             
-            # Monta um dicionário com os produtos daquela loja
             prod_qtys = {p: 0 for p in PRODUCTS}
             if not store_latest.empty:
                 for _, r in store_latest.iterrows():
@@ -542,15 +544,83 @@ def admin_dashboard(client: Client, profile: dict):
             """, unsafe_allow_html=True)
 
     with tab_history:
-        st.markdown("### Histórico Geral de Lançamentos")
+        st.markdown("### 📜 Histórico Geral e Filtros de Planilha")
+        
         if not df.empty:
-            st.dataframe(
-                df[["Loja", "product", "quantity_remaining", "Data e hora", "Funcionária", "notes"]],
-                use_container_width=True,
-                hide_index=True
+            # Área de Filtros
+            f_col1, f_col2, f_col3 = st.columns([1.5, 1.5, 1])
+            with f_col1:
+                store_filter_options = ["Todas as Lojas"] + list(display_names.values())
+                selected_store_filter = st.selectbox("Filtrar por Loja", store_filter_options)
+            
+            with f_col2:
+                date_range = st.date_input("Filtrar por Período (Data Inicial e Final)", value=[today, today])
+            
+            # Aplicação dos Filtros
+            filtered_df = df.copy()
+            if selected_store_filter != "Todas as Lojas":
+                filtered_df = filtered_df[filtered_df["Loja"] == selected_store_filter]
+                
+            if isinstance(date_range, (list, tuple)) and len(date_range) == 2:
+                start_date, end_date = date_range
+                filtered_df = filtered_df[
+                    (filtered_df["dt_object"].dt.date >= start_date) & 
+                    (filtered_df["dt_object"].dt.date <= end_date)
+                ]
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # Botões de Apagar Histórico e Reiniciar
+            act_col1, act_col2 = st.columns([1, 1])
+            with act_col1:
+                with st.popover("⚠️ Apagar Histórico Filtrado"):
+                    st.warning("Apagará do banco de dados os lançamentos do filtro selecionado acima.")
+                    if st.button("Confirmar Exclusão dos Filtrados", key="del_filtered"):
+                        try:
+                            ids_to_del = filtered_df["id"].tolist()
+                            if ids_to_del:
+                                client.table("stock_entries").delete().in_("id", ids_to_del).execute()
+                                st.success("Registros apagados com sucesso!")
+                                st.rerun()
+                            else:
+                                st.info("Nenhum registro selecionado para apagar.")
+                        except Exception:
+                            st.error("Erro ao apagar registros do histórico.")
+
+            with act_col2:
+                with st.popover("🚨 ZERAR/REINICIAR TODO O HISTÓRICO DO SISTEMA"):
+                    st.error("ATENÇÃO: Isso apagar completamente TODOS os lançamentos do sistema de todas as lojas!")
+                    if st.button("CONFIRMAR REINICIALIZAÇÃO COMPLETA", key="del_everything"):
+                        try:
+                            client.table("stock_entries").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+                            st.success("O sistema foi zerado com sucesso!")
+                            st.rerun()
+                        except Exception:
+                            st.error("Erro ao reiniciar o sistema.")
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # Exibição estilo planilha
+            display_cols = ["Data", "Hora e Minuto", "Loja", "Funcionária", "product", "quantity_remaining", "notes"]
+            renamed_df = filtered_df[display_cols].rename(columns={
+                "product": "Produto",
+                "quantity_remaining": "Quantidade Restante",
+                "notes": "Observações"
+            })
+
+            st.dataframe(renamed_df, use_container_width=True, hide_index=True)
+            
+            # Botão para baixar em CSV / Excel
+            csv_data = renamed_df.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label="📥 Baixar esta planilha (CSV)",
+                data=csv_data,
+                file_name=f"historico_estoque_cm_marmitaria_{today.strftime('%d_%m_%Y')}.csv",
+                mime="text/csv"
             )
+
         else:
-            st.info("Nenhum lançamento registrado até o momento.")
+            st.info("Nenhum lançamento registrado no momento.")
 
     with tab_reports:
         st.markdown("### Visão por Produto")
