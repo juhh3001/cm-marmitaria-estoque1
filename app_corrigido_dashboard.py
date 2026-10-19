@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 import pandas as pd
 import streamlit as st
 from PIL import Image
-from streamlit_autorefresh import st_autorefresh
 from supabase import create_client, Client
 
 # Configuração da Página
@@ -18,13 +17,13 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Fuso horário oficial de Brasília
 TZ_BR = zoneinfo.ZoneInfo("America/Sao_Paulo")
 PRODUCTS = ["Marmitex pequena", "Marmitex grande", "Refrigerantes Peq", "Pudim", "Refrigerante lata", "Água"]
-PRODUCT_PRICES = {"Marmitex pequena": 11.99, "Marmitex grande": 15.00, "Refrigerantes Peq": 4.00, "Pudim": 5.00, "Refrigerante lata": 7.00, "Água": 4.00}
 BUCKET = "stock-photos"
 USERNAME_EMAIL_DOMAIN = "estoque.invalid"
 
-# Estilização CSS
+# Estilização CSS Preservada
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap');
@@ -71,14 +70,15 @@ html, body, [class*="css"] {
     margin-top: 0.25rem;
 }
 
-/* Cartões das Lojas */
-.store-box {
-    background: #FFFFFF;
+/* Cartões de Status / Alertas */
+.alert-status-box {
+    background: #FFF8E1;
     border: 2px solid #FFE082;
-    border-radius: 16px;
-    padding: 1.25rem;
-    margin-bottom: 1rem;
-    box-shadow: 0 4px 12px rgba(218, 165, 32, 0.08);
+    border-radius: 14px;
+    padding: 1rem 1.2rem;
+    margin-bottom: 1.5rem;
+    color: #2A1200;
+    font-weight: 600;
 }
 
 /* Botões Gerais */
@@ -260,10 +260,15 @@ def save_form_data(client: Client, profile: dict, entry_type: str, form_data: di
 
         clean_note = " | ".join(note_parts) if note_parts else ""
         
+        # Tag do tipo no nome do produto se for fechamento
+        prod_name = f"FECHAMENTO - {product}" if entry_type == "fechamento" else product
+        if entry_type == "abertura":
+            prod_name = f"ABERTURA - {product}"
+            
         rows.append({
             "store_id": store_id,
             "user_id": user_id,
-            "product": product,
+            "product": prod_name,
             "quantity_remaining": qty,
             "photo_path": p_path,
             "notes": clean_note,
@@ -276,7 +281,7 @@ def save_form_data(client: Client, profile: dict, entry_type: str, form_data: di
         rows.append({
             "store_id": store_id,
             "user_id": user_id,
-            "product": "💳 FECHAMENTO - Maquininha",
+            "product": "FECHAMENTO - Maquininha",
             "quantity_remaining": float(fin_data.get("card", 0.0)),
             "photo_path": card_ph_path,
             "notes": card_obs if card_obs else "",
@@ -287,7 +292,7 @@ def save_form_data(client: Client, profile: dict, entry_type: str, form_data: di
         rows.append({
             "store_id": store_id,
             "user_id": user_id,
-            "product": "💵 FECHAMENTO - Dinheiro",
+            "product": "FECHAMENTO - Dinheiro",
             "quantity_remaining": float(fin_data.get("cash", 0.0)),
             "photo_path": None,
             "notes": cash_obs if cash_obs else "",
@@ -328,7 +333,6 @@ def staff_screen(client: Client, profile: dict):
     </div>
     """, unsafe_allow_html=True)
 
-    # Exibe mensagem de sucesso se houver envio recente
     if st.session_state.get("form_success_msg"):
         st.success(st.session_state.form_success_msg)
         st.balloons()
@@ -348,7 +352,7 @@ def staff_screen(client: Client, profile: dict):
     flow_mode = st.session_state.get("staff_flow_mode", "abertura")
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # 1. ESTOQUE DO INÍCIO DO DIA (COM clear_on_submit=True)
+    # 1. ESTOQUE DO INÍCIO DO DIA
     if flow_mode == "abertura":
         st.markdown("### ☀️ 1. Contagem de Abertura (Início do Dia)")
         st.caption("Registre o estoque inicial ao abrir a loja. Foto por produto.")
@@ -372,7 +376,7 @@ def staff_screen(client: Client, profile: dict):
                 st.session_state.form_success_msg = "✅ Seu envio do ESTOQUE INICIAL foi salvo e enviado com sucesso para a administradora!"
                 st.rerun()
 
-    # 2. REGISTRAR ESTOQUE DO DIA (COM clear_on_submit=True)
+    # 2. REGISTRAR ESTOQUE DO DIA (ACOMPANHAMENTO)
     elif flow_mode == "meio_dia":
         st.markdown("### 🔄 2. Registrar Estoque do Dia / Marmitas")
         st.caption("Envie quantas vezes forem necessárias ao longo do dia com fotos atualizadas.")
@@ -396,7 +400,7 @@ def staff_screen(client: Client, profile: dict):
                 st.session_state.form_success_msg = "✅ Seu envio de ATUALIZAÇÃO DE ESTOQUE foi salvo e enviado com sucesso para a administradora!"
                 st.rerun()
 
-    # 3. FECHAMENTO DO DIA (COM clear_on_submit=True)
+    # 3. FECHAMENTO DO DIA
     elif flow_mode == "fechamento":
         st.markdown("### 🌙 3. Fechamento Final do Dia")
         st.caption("Registre o que sobrou no final do dia (sem foto do estoque) e as informações financeiras.")
@@ -463,6 +467,10 @@ def admin_dashboard(client: Client, profile: dict):
             return f"Loja {number} · {location}", staff
         return (raw or "Unidade sem nome", "Cadastro pendente")
 
+    # Horário atual de Brasília
+    now_br = datetime.now(TZ_BR)
+    last_time_formatted = now_br.strftime("%d/%m/%Y às %H:%M:%S")
+
     st.markdown("""
     <div class="hero-header">
         <div style="font-size: 0.85rem; font-weight: 700; color: #8C4A00; text-transform: uppercase;">PAINEL CENTRAL · CM MARMITARIA</div>
@@ -471,45 +479,18 @@ def admin_dashboard(client: Client, profile: dict):
     </div>
     """, unsafe_allow_html=True)
 
-    col_ctrl1, col_ctrl2, col_ctrl3 = st.columns([1, 1.2, 3])
-    
+    col_ctrl1, col_ctrl2 = st.columns([1, 4])
     with col_ctrl1:
-        if st.button("🔄 Atualizar"):
-            st.session_state.last_admin_update = datetime.now(timezone.utc).astimezone()
+        if st.button("🔄 Atualizar Painel"):
             st.rerun()
-
     with col_ctrl2:
-        auto_refresh = st.toggle("⏱️ Auto 5 min", value=False)
-
-    if "last_admin_update" not in st.session_state:
-        st.session_state.last_admin_update = datetime.now(timezone.utc).astimezone()
-
-    last_time_formatted = st.session_state.last_admin_update.strftime("%d/%m/%Y às %H:%M:%S")
-
-    with col_ctrl3:
-        if auto_refresh:
-            @st.fragment(run_every=1)
-            def countdown_display():
-                now_ts = datetime.now(timezone.utc).timestamp()
-                if "next_refresh_ts" not in st.session_state or st.session_state.next_refresh_ts < now_ts:
-                    st.session_state.next_refresh_ts = now_ts + 300
-                    st.rerun()
-                
-                remaining = int(st.session_state.next_refresh_ts - now_ts)
-                mins = remaining // 60
-                secs = remaining % 60
-                st.markdown(f"<p style='margin: 0; font-size: 0.85rem; font-weight: 600; color: #8C4A00;'>⏳ Próxima att em: <b>{mins:02d}:{secs:02d}</b> | 🕒 Última atualização do sistema: <b>{last_time_formatted}</b></p>", unsafe_allow_html=True)
-            
-            countdown_display()
-        else:
-            st.session_state.pop("next_refresh_ts", None)
-            st.markdown(f"<p style='margin: 0; font-size: 0.85rem; font-weight: 600; color: #8C4A00;'>🕒 Última atualização do sistema: <b>{last_time_formatted}</b></p>", unsafe_allow_html=True)
+        st.markdown(f"<p style='margin-top: 0.5rem; font-size: 0.9rem; font-weight: 600; color: #8C4A00;'>🕒 Última atualização (Horário de Brasília): <b>{last_time_formatted}</b></p>", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
-    _load_and_render_admin_content(client, display_store_name, known_store_labels)
+    _load_and_render_admin_content(client, display_store_name, known_store_labels, now_br)
 
 
-def _load_and_render_admin_content(client, display_store_name, known_store_labels):
+def _load_and_render_admin_content(client, display_store_name, known_store_labels, now_br):
     try:
         stores = client.table("stores").select("id, name").execute().data or []
         entries = client.table("stock_entries").select(
@@ -527,116 +508,178 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
     store_names = {str(x["id"]): str(x.get("name") or "Unidade") for x in stores}
     display_names = {key: display_store_name(value)[0] for key, value in store_names.items()}
     staff_by_store = {key: display_store_name(value)[1] for key, value in store_names.items()}
-    profile_names = {str(x["user_id"]): x.get("display_name") or "Usuário" for x in profiles}
     
     df = pd.DataFrame(entries)
-    today_date = pd.Timestamp.now(tz="America/Sao_Paulo").date()
+    today_date = now_br.date()
 
     if not df.empty:
         df["store_id"] = df["store_id"].astype(str)
         df["Loja"] = df["store_id"].map(display_names).fillna("Unidade")
-        df["Funcionária"] = df["user_id"].astype(str).map(profile_names).fillna("Usuário")
         df["dt_object"] = pd.to_datetime(df["created_at"], errors="coerce", utc=True).dt.tz_convert("America/Sao_Paulo")
         df["Data"] = df["dt_object"].dt.strftime("%d/%m/%Y")
-        df["Hora e Minuto"] = df["dt_object"].dt.strftime("%H:%M:%S")
-        df["Data e Hora"] = df["dt_object"].dt.strftime("%d/%m/%Y %H:%M:%S")
+        df["Hora"] = df["dt_object"].dt.strftime("%H:%M:%S")
     else:
         df["dt_object"] = pd.Series(dtype="datetime64[ns, America/Sao_Paulo]")
 
-    tab_abertura, tab_meio_dia, tab_fechamento, tab_history, tab_reports = st.tabs([
+    tab_abertura, tab_meio_dia, tab_fechamento = st.tabs([
         "☀️ 1. Aberturas do Dia", 
         "🔄 2. Acompanhamento (Meio do Dia)", 
-        "🌙 3. Fechamento Final", 
-        "📜 Histórico & Planilha", 
-        "📊 Relatório"
+        "🌙 3. Fechamento Final"
     ])
 
+    # 1. ABA DE ABERTURA DO DIA
     with tab_abertura:
-        st.markdown("### ☀️ Registros de Abertura do Dia (Início)")
-        if not df.empty:
-            df_ab = df[~df["product"].str.contains("FECHAMENTO", na=False)]
-            if not df_ab.empty:
-                for store in stores:
-                    sid = str(store["id"])
-                    st_ab = df_ab[df_ab["store_id"] == sid]
-                    if not st_ab.empty:
-                        last_ab = st_ab.sort_values("created_at").groupby("product").last().reset_index()
-                        st.markdown(f"#### 🏪 {display_names[sid]} (Resp: **{staff_by_store[sid]}**)")
-                        for _, r in last_ab.iterrows():
-                            c1, c2, c3 = st.columns([2, 1, 2])
-                            c1.write(f"• **{r['product']}**: {int(r['quantity_remaining'])} un.")
+        df_ab_today = df[(df["notes"].str.contains("ABERTURA", na=False) | df["product"].str.contains("ABERTURA", na=False)) & (df["dt_object"].dt.date == today_date)] if not df.empty else pd.DataFrame()
+        registered_stores_ab = set(df_ab_today["store_id"].unique()) if not df_ab_today.empty else set()
+        
+        pending_ab = [display_names[str(s["id"])] for s in stores if str(s["id"]) not in registered_stores_ab]
+        count_reg = len(registered_stores_ab)
+        count_total = len(stores)
+        
+        pending_str = ", ".join(pending_ab) if pending_ab else "Nenhuma! Todas as lojas já registraram."
+        st.markdown(f"""
+        <div class="alert-status-box">
+            📌 <b>Status Abertura de Hoje:</b> {count_reg} de {count_total} lojas registraram.<br>
+            ⚠️ <b>Lojas pendentes de Abertura:</b> {pending_str}
+        </div>
+        """, unsafe_allow_html=True)
+
+        cols = st.columns(2)
+        for idx, store in enumerate(stores):
+            sid = str(store["id"])
+            s_name = display_names[sid]
+            s_resp = staff_by_store[sid]
+            
+            st_data = df_ab_today[df_ab_today["store_id"] == sid] if not df_ab_today.empty else pd.DataFrame()
+            
+            m_g = 0
+            m_p = 0
+            time_txt = "Pendente"
+            
+            if not st_data.empty:
+                time_txt = st_data.sort_values("created_at", ascending=False)["Hora"].iloc[0]
+                mg_row = st_data[st_data["product"].str.contains("Marmitex grande", na=False)]
+                mp_row = st_data[st_data["product"].str.contains("Marmitex pequena", na=False)]
+                if not mg_row.empty:
+                    m_g = int(mg_row.iloc[0]["quantity_remaining"])
+                if not mp_row.empty:
+                    m_p = int(mp_row.iloc[0]["quantity_remaining"])
+
+            with cols[idx % 2]:
+                with st.expander(f"🏪 {s_name} | Resp: {s_resp} | 🍲 Grande: {m_g} un. | Pequena: {m_p} un. ({time_txt})", expanded=False):
+                    if not st_data.empty:
+                        last_items = st_data.sort_values("created_at").groupby("product").last().reset_index()
+                        for _, r in last_items.iterrows():
+                            clean_p_name = r["product"].replace("ABERTURA - ", "")
+                            st.write(f"• **{clean_p_name}**: {int(r['quantity_remaining'])} un. | *Obs:* {r['notes']}")
                             if pd.notnull(r.get("photo_path")) and str(r["photo_path"]).strip():
                                 url = signed_photo_url(client, r["photo_path"])
                                 if url:
-                                    c2.image(url, width=100)
-                            c3.caption(f"{r['notes']}")
-                        st.divider()
-            else:
-                st.info("Nenhuma abertura registrada hoje.")
+                                    st.image(url, width=150)
+                    else:
+                        st.info("Nenhum registro de abertura para esta loja hoje.")
 
+    # 2. ABA DE ACOMPANHAMENTO DO DIA
     with tab_meio_dia:
-        st.markdown("### 🔄 Contagens Enviadas Durante o Dia")
-        if not df.empty:
-            df_md = df[~df["product"].str.contains("FECHAMENTO", na=False)]
-            if not df_md.empty:
-                st.dataframe(
-                    df_md[["Data e Hora", "Loja", "Funcionária", "product", "quantity_remaining", "notes"]].rename(columns={
-                        "product": "Produto", "quantity_remaining": "Quantidade", "notes": "Observação"
-                    }),
-                    use_container_width=True, hide_index=True
-                )
-            else:
-                st.info("Nenhuma contagem enviada durante o dia.")
+        df_md_today = df[(~df["product"].str.contains("FECHAMENTO", na=False) & ~df["product"].str.contains("ABERTURA", na=False)) & (df["dt_object"].dt.date == today_date)] if not df.empty else pd.DataFrame()
+        registered_stores_md = set(df_md_today["store_id"].unique()) if not df_md_today.empty else set()
+        
+        pending_md = [display_names[str(s["id"])] for s in stores if str(s["id"]) not in registered_stores_md]
+        count_reg_md = len(registered_stores_md)
+        pending_str_md = ", ".join(pending_md) if pending_md else "Nenhuma! Todas as lojas enviaram acompanhamento."
+        
+        st.markdown(f"""
+        <div class="alert-status-box">
+            📌 <b>Status Acompanhamento de Hoje:</b> {count_reg_md} de {len(stores)} lojas enviaram atualização.<br>
+            ⚠️ <b>Lojas sem atualização hoje:</b> {pending_str_md}
+        </div>
+        """, unsafe_allow_html=True)
 
+        cols = st.columns(2)
+        for idx, store in enumerate(stores):
+            sid = str(store["id"])
+            s_name = display_names[sid]
+            s_resp = staff_by_store[sid]
+            
+            st_data = df_md_today[df_md_today["store_id"] == sid] if not df_md_today.empty else pd.DataFrame()
+            
+            m_g = 0
+            m_p = 0
+            time_txt = "Pendente"
+            
+            if not st_data.empty:
+                time_txt = st_data.sort_values("created_at", ascending=False)["Hora"].iloc[0]
+                mg_row = st_data[st_data["product"].str.contains("Marmitex grande", na=False)]
+                mp_row = st_data[st_data["product"].str.contains("Marmitex pequena", na=False)]
+                if not mg_row.empty:
+                    m_g = int(mg_row.iloc[0]["quantity_remaining"])
+                if not mp_row.empty:
+                    m_p = int(mp_row.iloc[0]["quantity_remaining"])
+
+            with cols[idx % 2]:
+                with st.expander(f"🏪 {s_name} | Resp: {s_resp} | 🍲 Grande: {m_g} un. | Pequena: {m_p} un. (Último às {time_txt})", expanded=False):
+                    if not st_data.empty:
+                        for _, r in st_data.iterrows():
+                            st.write(f"• [{r['Hora']}] **{r['product']}**: {int(r['quantity_remaining'])} un. | *Obs:* {r['notes']}")
+                            if pd.notnull(r.get("photo_path")) and str(r["photo_path"]).strip():
+                                url = signed_photo_url(client, r["photo_path"])
+                                if url:
+                                    st.image(url, width=150)
+                    else:
+                        st.info("Nenhuma atualização enviada durante o dia para esta loja.")
+
+    # 3. ABA DE FECHAMENTO FINAL
     with tab_fechamento:
-        st.markdown("### 🌙 Fechamento Final das Lojas")
-        if not df.empty:
-            df_fc = df[df["product"].str.contains("FECHAMENTO", na=False)]
-            if not df_fc.empty:
-                for store in stores:
-                    sid = str(store["id"])
-                    st_fc = df_fc[df_fc["store_id"] == sid]
-                    if not st_fc.empty:
-                        st.markdown(f"#### 🏪 {display_names[sid]} (Resp: **{staff_by_store[sid]}**)")
-                        for _, r in st_fc.iterrows():
-                            if "Maquininha" in r['product'] or "Dinheiro" in r['product']:
-                                st.write(f"• **{r['product']}**: **R$ {r['quantity_remaining']:.2f}** | Observação: {r['notes']}")
+        df_fc_today = df[(df["product"].str.contains("FECHAMENTO", na=False)) & (df["dt_object"].dt.date == today_date)] if not df.empty else pd.DataFrame()
+        registered_stores_fc = set(df_fc_today["store_id"].unique()) if not df_fc_today.empty else set()
+        
+        pending_fc = [display_names[str(s["id"])] for s in stores if str(s["id"]) not in registered_stores_fc]
+        count_reg_fc = len(registered_stores_fc)
+        pending_str_fc = ", ".join(pending_fc) if pending_fc else "Nenhuma! Todas as lojas fecharam o dia."
+        
+        st.markdown(f"""
+        <div class="alert-status-box">
+            📌 <b>Status Fechamento de Hoje:</b> {count_reg_fc} de {len(stores)} lojas fecharam o dia.<br>
+            ⚠️ <b>Lojas pendentes de Fechamento:</b> {pending_str_fc}
+        </div>
+        """, unsafe_allow_html=True)
+
+        cols = st.columns(2)
+        for idx, store in enumerate(stores):
+            sid = str(store["id"])
+            s_name = display_names[sid]
+            s_resp = staff_by_store[sid]
+            
+            st_data = df_fc_today[df_fc_today["store_id"] == sid] if not df_fc_today.empty else pd.DataFrame()
+            
+            m_g = 0
+            m_p = 0
+            time_txt = "Pendente"
+            
+            if not st_data.empty:
+                time_txt = st_data.sort_values("created_at", ascending=False)["Hora"].iloc[0]
+                mg_row = st_data[st_data["product"].str.contains("Marmitex grande", na=False)]
+                mp_row = st_data[st_data["product"].str.contains("Marmitex pequena", na=False)]
+                if not mg_row.empty:
+                    m_g = int(mg_row.iloc[0]["quantity_remaining"])
+                if not mp_row.empty:
+                    m_p = int(mp_row.iloc[0]["quantity_remaining"])
+
+            with cols[idx % 2]:
+                with st.expander(f"🏪 {s_name} | Resp: {s_resp} | 🍲 Sobra Grande: {m_g} un. | Sobra Pequena: {m_p} un. ({time_txt})", expanded=False):
+                    if not st_data.empty:
+                        for _, r in st_data.iterrows():
+                            clean_p_name = r["product"].replace("FECHAMENTO - ", "")
+                            if "Maquininha" in clean_p_name or "Dinheiro" in clean_p_name:
+                                st.write(f"💰 **{clean_p_name}**: **R$ {r['quantity_remaining']:.2f}** | *Obs:* {r['notes']}")
                                 if pd.notnull(r.get("photo_path")) and str(r["photo_path"]).strip():
                                     url = signed_photo_url(client, r["photo_path"])
                                     if url:
-                                        with st.popover("📷 Ver Foto Comprovante"):
-                                            st.image(url, use_container_width=True)
+                                        st.image(url, width=200, caption="Comprovante Maquininha")
                             else:
-                                st.write(f"• **{r['product']}**: Sobraram **{int(r['quantity_remaining'])} un.** | Observação: {r['notes']}")
-                        st.divider()
-            else:
-                st.info("Nenhum fechamento registrado hoje.")
-
-    with tab_history:
-        st.markdown("### 📜 Histórico Geral e Planilha Limpa")
-        if not df.empty:
-            display_cols = ["Data", "Hora e Minuto", "Loja", "Funcionária", "product", "quantity_remaining", "notes"]
-            renamed_df = df[display_cols].rename(columns={
-                "product": "Produto / Item",
-                "quantity_remaining": "Quantidade / Valor (R$)",
-                "notes": "Observação"
-            })
-            st.dataframe(renamed_df, use_container_width=True, hide_index=True)
-            
-            csv_data = renamed_df.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                label="📥 Baixar Planilha (CSV)",
-                data=csv_data,
-                file_name=f"historico_cm_marmitaria_{today_date.strftime('%d_%m_%Y')}.csv",
-                mime="text/csv"
-            )
-
-    with tab_reports:
-        st.markdown("### Visão Geral de Estoque por Produto")
-        if not df.empty:
-            df_prod_only = df[~df["product"].str.contains("FECHAMENTO", na=False)]
-            if not df_prod_only.empty:
-                st.bar_chart(df_prod_only.groupby("product")["quantity_remaining"].sum())
+                                st.write(f"• **{clean_p_name}**: Sobraram **{int(r['quantity_remaining'])} un.** | *Obs:* {r['notes']}")
+                    else:
+                        st.info("Fechamento ainda não enviado para esta loja hoje.")
 
 
 def main():
