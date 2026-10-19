@@ -1,5 +1,6 @@
 import os
 import uuid
+import zoneinfo
 from datetime import datetime, timezone
 
 import pandas as pd
@@ -13,6 +14,9 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Fuso horário fixo oficial de Brasília
+TZ_BR = zoneinfo.ZoneInfo("America/Sao_Paulo")
 
 PRODUCTS = ["Marmitex pequena", "Marmitex grande", "Refrigerantes Peq", "Pudim", "Refrigerante lata", "Água"]
 PRODUCT_PRICES = {"Marmitex pequena": 11.99, "Marmitex grande": 15.00, "Refrigerantes Peq": 4.00, "Pudim": 5.00, "Refrigerante lata": 7.00, "Água": 4.00}
@@ -231,7 +235,6 @@ def save_complete_form(client: Client, profile: dict, form_data: dict, photos_da
     store_id = str(profile["store_id"])
     created_at = datetime.now(timezone.utc).isoformat()
     
-    # Faz upload do comprovante de cartão se houver
     card_ph_path = upload_photo(client, fin_photos.get("card"), store_id, user_id)
     cash_ph_path = upload_photo(client, fin_photos.get("cash"), store_id, user_id)
     
@@ -241,7 +244,6 @@ def save_complete_form(client: Client, profile: dict, form_data: dict, photos_da
         p_path = upload_photo(client, photos_data.get(product), store_id, user_id)
         prod_obs = notes_data.get(product, "")
         
-        # Junta as observações do produto com as financeiras em formato claro
         full_note = f"Obs Produto: {prod_obs} | Maquininha: R$ {fin_data.get('card', 0.0):.2f} (Obs: {fin_notes.get('card', '')}) | Dinheiro: R$ {fin_data.get('cash', 0.0):.2f} (Obs: {fin_notes.get('cash', '')})"
         
         rows.append({
@@ -256,7 +258,7 @@ def save_complete_form(client: Client, profile: dict, form_data: dict, photos_da
     return client.table("stock_entries").insert(rows).execute()
 
 
-# Interface das Funcionárias (Fundo Preto e Formulário Único Contínuo)
+# Interface das Funcionárias
 def staff_screen(client: Client, profile: dict):
     st.markdown("""
     <style>
@@ -287,7 +289,11 @@ def staff_screen(client: Client, profile: dict):
     </div>
     """, unsafe_allow_html=True)
 
-    with st.form("single_staff_form"):
+    if st.session_state.get("show_success_confirm"):
+        st.success("✅ SEU FECHAMENTO FOI CONFIRMADO E SALVO COM SUCESSO! A tela foi limpa para novos lançamentos.")
+        st.session_state.show_success_confirm = False
+
+    with st.form("single_staff_form", clear_on_submit=True):
         st.markdown("### 📦 1. Quantidades e Fotos dos Produtos")
         
         form_data = {}
@@ -316,14 +322,14 @@ def staff_screen(client: Client, profile: dict):
         
         fc1, fc2 = st.columns(2)
         with fc1:
-            card_val = st.number_input("Valor final da maquininha (R$)", min_value=0.0, step=0.50, value=0.0)
-            card_photo = st.file_uploader("Foto do comprovante da maquininha", type=["jpg", "jpeg", "png", "webp"], key="card_ph")
-            card_note = st.text_input("Observação da Maquininha", placeholder="Ex: Cartão Visa/Master...")
+            card_val = st.number_input("Valor final da maquininha (R$)", min_value=0.0, step=0.50, value=0.0, key="card_val_in")
+            card_photo = st.file_uploader("Foto do comprovante da maquininha", type=["jpg", "jpeg", "png", "webp"], key="card_ph_in")
+            card_note = st.text_input("Observação da Maquininha", placeholder="Ex: Cartão Visa/Master...", key="card_note_in")
             
         with fc2:
-            cash_val = st.number_input("Total em dinheiro em espécie (R$)", min_value=0.0, step=0.50, value=0.0)
-            cash_photo = st.file_uploader("Foto do envelope/dinheiro (opcional)", type=["jpg", "jpeg", "png", "webp"], key="cash_ph")
-            cash_note = st.text_input("Observação do Dinheiro", placeholder="Ex: Troco deixado na gaveta...")
+            cash_val = st.number_input("Total em dinheiro em espécie (R$)", min_value=0.0, step=0.50, value=0.0, key="cash_val_in")
+            cash_photo = st.file_uploader("Foto do envelope/dinheiro (opcional)", type=["jpg", "jpeg", "png", "webp"], key="cash_ph_in")
+            cash_note = st.text_input("Observação do Dinheiro", placeholder="Ex: Troco deixado na gaveta...", key="cash_note_in")
 
         st.markdown("<br>", unsafe_allow_html=True)
         submitted = st.form_submit_button("✅ Enviar Fechamento Completo", type="primary", use_container_width=True)
@@ -331,11 +337,12 @@ def staff_screen(client: Client, profile: dict):
     if submitted:
         try:
             fin_data = {"card": card_val, "cash": cash_val}
-            fin_photos = {"card": card_photo, "cash": cash_photo} # pode ajustar se quiser separar foto dinheiro
+            fin_photos = {"card": card_photo, "cash": cash_photo}
             fin_notes = {"card": card_note, "cash": cash_note}
             
             save_complete_form(client, profile, form_data, photos_data, notes_data, fin_data, fin_photos, fin_notes)
-            st.success("🎉 Fechamento enviado e salvo com sucesso no sistema!")
+            
+            st.session_state.show_success_confirm = True
             st.rerun()
         except Exception as e:
             st.error(f"Erro ao salvar o formulário: {e}")
@@ -349,7 +356,7 @@ def signed_photo_url(client: Client, path: str):
         return None
 
 
-# Painel do Administrador (Com contagem regressiva e data/horário exato da última atualização)
+# Painel do Administrador (Com Fuso Horário de Brasília Fixo e Cards de Gerenciamento)
 def admin_dashboard(client: Client, profile: dict):
     known_store_labels = {
         "5": ("Leme", "Kauany"),
@@ -378,19 +385,20 @@ def admin_dashboard(client: Client, profile: dict):
     </div>
     """, unsafe_allow_html=True)
 
-    # Controles de Atualização com data/horário exato e contagem regressiva
     col_ctrl1, col_ctrl2, col_ctrl3 = st.columns([1, 1.2, 3])
     
+    now_br = datetime.now(TZ_BR)
+
     with col_ctrl1:
         if st.button("🔄 Atualizar"):
-            st.session_state.last_admin_update = datetime.now(timezone.utc).astimezone()
+            st.session_state.last_admin_update = datetime.now(TZ_BR)
             st.rerun()
 
     with col_ctrl2:
         auto_refresh = st.toggle("⏱️ Auto 5 min", value=False)
 
     if "last_admin_update" not in st.session_state:
-        st.session_state.last_admin_update = datetime.now(timezone.utc).astimezone()
+        st.session_state.last_admin_update = now_br
 
     last_time_formatted = st.session_state.last_admin_update.strftime("%d/%m/%Y às %H:%M:%S")
 
@@ -398,14 +406,15 @@ def admin_dashboard(client: Client, profile: dict):
         if auto_refresh:
             @st.fragment(run_every=1)
             def countdown_display():
-                now_ts = datetime.now(timezone.utc).timestamp()
+                now_ts = datetime.now(TZ_BR).timestamp()
                 if "next_refresh_ts" not in st.session_state or st.session_state.next_refresh_ts < now_ts:
                     st.session_state.next_refresh_ts = now_ts + 300
+                    st.session_state.last_admin_update = datetime.now(TZ_BR)
                     st.rerun()
                 
                 remaining = int(st.session_state.next_refresh_ts - now_ts)
-                mins = remaining // 60
-                secs = remaining % 60
+                mins = max(0, remaining // 60)
+                secs = max(0, remaining % 60)
                 st.markdown(f"<p style='margin: 0; font-size: 0.85rem; font-weight: 600; color: #8C4A00;'>⏳ Próxima att em: <b>{mins:02d}:{secs:02d}</b> | 🕒 Última atualização do sistema: <b>{last_time_formatted}</b></p>", unsafe_allow_html=True)
             
             countdown_display()
@@ -442,6 +451,8 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
         df["store_id"] = df["store_id"].astype(str)
         df["Loja"] = df["store_id"].map(display_names).fillna("Unidade")
         df["Funcionária"] = df["user_id"].astype(str).map(profile_names).fillna("Usuário")
+        
+        # Conversão de fuso horário corrigida para Brasília
         df["dt_object"] = pd.to_datetime(df["created_at"], errors="coerce", utc=True).dt.tz_convert("America/Sao_Paulo")
         df["Data"] = df["dt_object"].dt.strftime("%d/%m/%Y")
         df["Hora e Minuto"] = df["dt_object"].dt.strftime("%H:%M:%S")
@@ -454,7 +465,7 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
 
     tab_overview, tab_stores, tab_carteirinhas, tab_history, tab_reports = st.tabs([
         "📌 Resumo de Marmitas", 
-        "🏪 Gerenciar por Loja", 
+        "🏪 Gerenciar por Loja (Cards)", 
         "🏷️ Carteirinhas de Estoque", 
         "📜 Histórico & Planilha", 
         "📊 Relatório"
@@ -491,52 +502,62 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                 </div>
                 """, unsafe_allow_html=True)
 
+    # ABA GERENCIAR POR LOJA (TODAS EM CARDS VISÍVEIS SIMULTANEAMENTE)
     with tab_stores:
-        st.markdown("### Detalhes por Loja e Exclusão de Registros")
-        options = {display_names[str(store["id"])]: str(store["id"]) for store in stores}
-        selected_label = st.selectbox("Escolha a Loja para gerenciar", list(options.keys()))
-        sid = options[selected_label]
-        store_latest = latest[latest["store_id"] == sid] if not latest.empty else latest
+        st.markdown("### 🏪 Gerenciamento por Cards de Lojas")
+        st.caption("Visão simultânea de todas as unidades com fotos, observações e controle de exclusão.")
 
-        col_del_all, _ = st.columns([1, 2])
-        with col_del_all:
-            with st.popover("⚠️ Apagar TODOS os registros desta loja"):
-                st.warning("Tem certeza? Esta ação apagará o histórico e lançamentos desta loja.")
-                if st.button("Confirmar e Apagar Tudo", key=f"confirm_del_all_{sid}"):
-                    try:
-                        client.table("stock_entries").delete().eq("store_id", sid).execute()
-                        st.success("Registros apagados com sucesso!")
-                        st.rerun()
-                    except Exception:
-                        st.error("Erro ao apagar os registros.")
+        for store in stores:
+            sid = str(store["id"])
+            name = display_names[sid]
+            resp = staff_by_store[sid]
+            store_latest = latest[latest["store_id"] == sid] if not latest.empty else pd.DataFrame()
 
-        st.markdown("<hr>", unsafe_allow_html=True)
+            with st.expander(f"🏪 **{name}** · Responsável: {resp}", expanded=True):
+                col_info, col_del = st.columns([3, 1])
+                with col_info:
+                    st.markdown(f"**Registros Atuais da {name}:**")
+                with col_del:
+                    with st.popover(f"🗑️ Apagar Registros da {name}"):
+                        st.warning("Confirma a exclusão de todos os registros desta loja?")
+                        if st.button("Confirmar Apagar Tudo", key=f"del_card_store_{sid}"):
+                            try:
+                                client.table("stock_entries").delete().eq("store_id", sid).execute()
+                                st.success("Registros da loja apagados!")
+                                st.rerun()
+                            except Exception:
+                                st.error("Erro ao apagar.")
 
-        if not store_latest.empty:
-            for _, row in store_latest.iterrows():
-                c1, c2, c3, c4 = st.columns([2.5, 1, 1, 1])
-                c1.markdown(f"**{row['product']}** — <small>{row.get('notes', '')}</small>", unsafe_allow_html=True)
-                c2.markdown(f"**{int(row['quantity_remaining'])} un.**")
-                
-                path = row.get("photo_path")
-                url = signed_photo_url(client, path) if isinstance(path, str) and path.strip() else None
-                if url:
-                    with c3.popover("📷 Ver Foto"):
-                        st.image(url, use_container_width=True)
+                if not store_latest.empty:
+                    for _, row in store_latest.iterrows():
+                        c1, c2, c3, c4 = st.columns([3, 1.2, 1.2, 1])
+                        
+                        p_name = row["product"]
+                        qty = int(row["quantity_remaining"])
+                        notes = row.get("notes") or "Sem observação"
+                        
+                        c1.markdown(f"• **{p_name}**: <small>{notes}</small>", unsafe_allow_html=True)
+                        c2.markdown(f"**{qty} un.**")
+
+                        path = row.get("photo_path")
+                        url = signed_photo_url(client, path) if isinstance(path, str) and path.strip() else None
+                        if url:
+                            with c3.popover("📷 Ver Foto"):
+                                st.image(url, use_container_width=True)
+                        else:
+                            c3.caption("Sem foto")
+
+                        row_id = row.get("id")
+                        if c4.button("🗑️ Apagar", key=f"del_card_item_{row_id}"):
+                            try:
+                                client.table("stock_entries").delete().eq("id", row_id).execute()
+                                st.success("Item apagado!")
+                                st.rerun()
+                            except Exception:
+                                st.error("Erro ao apagar item.")
+                        st.divider()
                 else:
-                    c3.caption("Sem foto")
-
-                row_id = row.get("id")
-                if c4.button("🗑️ Apagar", key=f"del_row_{row_id}"):
-                    try:
-                        client.table("stock_entries").delete().eq("id", row_id).execute()
-                        st.success("Item apagado!")
-                        st.rerun()
-                    except Exception:
-                        st.error("Erro ao apagar o item.")
-                st.divider()
-        else:
-            st.info("Nenhum lançamento ativo para esta loja.")
+                    st.info("Nenhum registro ativo para esta unidade.")
 
     with tab_carteirinhas:
         st.markdown("### 🏷️ Carteirinhas de Estoque Completo de Todas as Lojas")
@@ -579,8 +600,8 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
                 store_filter_options = ["Todas as Lojas"] + list(display_names.values())
                 selected_store_filter = st.selectbox("Filtrar por Loja", store_filter_options)
             with f_col2:
-                today = pd.Timestamp.now(tz="America/Sao_Paulo").date()
-                date_range = st.date_input("Filtrar por Período", value=[today, today])
+                today_br = datetime.now(TZ_BR).date()
+                date_range = st.date_input("Filtrar por Período", value=[today_br, today_br])
             
             filtered_df = df.copy()
             if selected_store_filter != "Todas as Lojas":
@@ -601,11 +622,12 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
             })
             st.dataframe(renamed_df, use_container_width=True, hide_index=True)
             
+            today_str = datetime.now(TZ_BR).strftime('%d_%m_%Y')
             csv_data = renamed_df.to_csv(index=False).encode("utf-8")
             st.download_button(
                 label="📥 Baixar Planilha (CSV)",
                 data=csv_data,
-                file_name=f"historico_cm_marmitaria_{today.strftime('%d_%m_%Y')}.csv",
+                file_name=f"historico_cm_marmitaria_{today_str}.csv",
                 mime="text/csv"
             )
         else:
