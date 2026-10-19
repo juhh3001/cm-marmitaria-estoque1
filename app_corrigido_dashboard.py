@@ -24,7 +24,7 @@ PRODUCT_PRICES = {"Marmitex pequena": 11.99, "Marmitex grande": 15.00, "Refriger
 BUCKET = "stock-photos"
 USERNAME_EMAIL_DOMAIN = "estoque.invalid"
 
-# Estilização CSS Mantida Intacta (Cores Amarelas/Pretas originais)
+# Estilização CSS
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap');
@@ -81,17 +81,6 @@ html, body, [class*="css"] {
     box-shadow: 0 4px 12px rgba(218, 165, 32, 0.08);
 }
 
-/* Alerta de Lojas Pendentes */
-.alert-pending-box {
-    background: #FEF2F2;
-    border: 2px solid #F87171;
-    border-radius: 14px;
-    padding: 1rem 1.2rem;
-    margin-bottom: 1.5rem;
-    color: #991B1B;
-    font-weight: 600;
-}
-
 /* Botões Gerais */
 div.stButton > button, [data-testid="stFormSubmitButton"] button {
     background-color: #FFB300 !important;
@@ -140,7 +129,7 @@ def sign_out():
             client.auth.sign_out()
     except Exception:
         pass
-    for key in ["supabase_user_id", "supabase_email", "supabase_access_token", "supabase_refresh_token", "profile", "supabase_client", "staff_flow_mode"]:
+    for key in ["supabase_user_id", "supabase_email", "supabase_access_token", "supabase_refresh_token", "profile", "supabase_client", "staff_flow_mode", "form_success_msg"]:
         st.session_state.pop(key, None)
     st.rerun()
 
@@ -255,29 +244,21 @@ def save_form_data(client: Client, profile: dict, entry_type: str, form_data: di
     store_id = str(profile["store_id"])
     created_at = datetime.now(timezone.utc).isoformat()
     
-    # Se for fechamento, faz upload do comprovante da maquininha
-    card_ph_path = None
-    if fin_photos and fin_photos.get("card"):
-        card_ph_path = upload_photo(client, fin_photos.get("card"), store_id, user_id)
-        
     rows = []
+    
     for product in PRODUCTS:
         qty = int(form_data.get(product, 0))
         p_path = upload_photo(client, photos_data.get(product), store_id, user_id) if photos_data and photos_data.get(product) else None
+        
         prod_obs = notes_data.get(product, "").strip() if notes_data else ""
         
-        # Formatação de nota limpa sem bagunçar a planilha
-        note_parts = [f"[{entry_type.upper()}]"]
+        note_parts = []
         if prod_obs:
-            note_parts.append(f"Obs Item: {prod_obs}")
+            note_parts.append(prod_obs)
         if general_note and general_note.strip():
             note_parts.append(f"Obs Geral: {general_note.strip()}")
-            
-        if entry_type == "fechamento" and fin_data:
-            note_parts.append(f"Maquininha: R$ {fin_data.get('card', 0.0):.2f} (Obs: {fin_notes.get('card', '')}) [Foto: {card_ph_path or 'Sem foto'}]")
-            note_parts.append(f"Dinheiro: R$ {fin_data.get('cash', 0.0):.2f} (Obs: {fin_notes.get('cash', '')})")
 
-        full_note = " | ".join(note_parts)
+        clean_note = " | ".join(note_parts) if note_parts else ""
         
         rows.append({
             "store_id": store_id,
@@ -285,13 +266,38 @@ def save_form_data(client: Client, profile: dict, entry_type: str, form_data: di
             "product": product,
             "quantity_remaining": qty,
             "photo_path": p_path,
-            "notes": full_note,
+            "notes": clean_note,
             "created_at": created_at,
         })
+        
+    if entry_type == "fechamento" and fin_data:
+        card_ph_path = upload_photo(client, fin_photos.get("card"), store_id, user_id) if fin_photos and fin_photos.get("card") else None
+        card_obs = fin_notes.get("card", "").strip() if fin_notes else ""
+        rows.append({
+            "store_id": store_id,
+            "user_id": user_id,
+            "product": "💳 FECHAMENTO - Maquininha",
+            "quantity_remaining": float(fin_data.get("card", 0.0)),
+            "photo_path": card_ph_path,
+            "notes": card_obs if card_obs else "",
+            "created_at": created_at,
+        })
+        
+        cash_obs = fin_notes.get("cash", "").strip() if fin_notes else ""
+        rows.append({
+            "store_id": store_id,
+            "user_id": user_id,
+            "product": "💵 FECHAMENTO - Dinheiro",
+            "quantity_remaining": float(fin_data.get("cash", 0.0)),
+            "photo_path": None,
+            "notes": cash_obs if cash_obs else "",
+            "created_at": created_at,
+        })
+
     return client.table("stock_entries").insert(rows).execute()
 
 
-# Interface das Funcionárias (Fundo Preto Mantido)
+# Interface das Funcionárias
 def staff_screen(client: Client, profile: dict):
     st.markdown("""
     <style>
@@ -322,7 +328,12 @@ def staff_screen(client: Client, profile: dict):
     </div>
     """, unsafe_allow_html=True)
 
-    # 3 Botões de escolha do Modo
+    # Exibe mensagem de sucesso se houver envio recente
+    if st.session_state.get("form_success_msg"):
+        st.success(st.session_state.form_success_msg)
+        st.balloons()
+        st.session_state.pop("form_success_msg", None)
+
     m1, m2, m3 = st.columns(3)
     with m1:
         if st.button("☀️ 1. Estoque do Início do Dia", use_container_width=True):
@@ -337,12 +348,12 @@ def staff_screen(client: Client, profile: dict):
     flow_mode = st.session_state.get("staff_flow_mode", "abertura")
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # MODO 1: ESTOQUE DO INÍCIO DO DIA (ABERTURA - COM FOTO, SEM DINHEIRO/MAQUININHA)
+    # 1. ESTOQUE DO INÍCIO DO DIA (COM clear_on_submit=True)
     if flow_mode == "abertura":
         st.markdown("### ☀️ 1. Contagem de Abertura (Início do Dia)")
-        st.caption("Registre o estoque inicial ao abrir a loja. Foto obrigatória por produto.")
+        st.caption("Registre o estoque inicial ao abrir a loja. Foto por produto.")
         
-        with st.form("form_abertura"):
+        with st.form("form_abertura", clear_on_submit=True):
             form_data, photos_data, notes_data = {}, {}, {}
             for product in PRODUCTS:
                 st.markdown(f"**🍲 {product}**")
@@ -358,15 +369,15 @@ def staff_screen(client: Client, profile: dict):
             gen_note = st.text_area("Observação Geral do Início do Dia", placeholder="Alguma observação importante do início?")
             if st.form_submit_button("✅ ENVIAR ESTOQUE INICIAL", use_container_width=True):
                 save_form_data(client, profile, "abertura", form_data, photos_data, notes_data, gen_note)
-                st.success("Estoque de abertura enviado com sucesso!")
+                st.session_state.form_success_msg = "✅ Seu envio do ESTOQUE INICIAL foi salvo e enviado com sucesso para a administradora!"
                 st.rerun()
 
-    # MODO 2: REGISTRAR ESTOQUE DO DIA (ACOMPANHAMENTO - COM FOTO, SEM DINHEIRO/MAQUININHA)
+    # 2. REGISTRAR ESTOQUE DO DIA (COM clear_on_submit=True)
     elif flow_mode == "meio_dia":
         st.markdown("### 🔄 2. Registrar Estoque do Dia / Marmitas")
         st.caption("Envie quantas vezes forem necessárias ao longo do dia com fotos atualizadas.")
         
-        with st.form("form_meio_dia"):
+        with st.form("form_meio_dia", clear_on_submit=True):
             form_data, photos_data, notes_data = {}, {}, {}
             for product in PRODUCTS:
                 st.markdown(f"**🍲 {product}**")
@@ -382,15 +393,15 @@ def staff_screen(client: Client, profile: dict):
             gen_note = st.text_area("Observação Geral do Lançamento", placeholder="Obs geral sobre o estoque de agora...")
             if st.form_submit_button("✅ ENVIAR ATUALIZAÇÃO DE ESTOQUE", use_container_width=True):
                 save_form_data(client, profile, "acompanhamento", form_data, photos_data, notes_data, gen_note)
-                st.success("Lançamento de acompanhamento enviado com sucesso!")
+                st.session_state.form_success_msg = "✅ Seu envio de ATUALIZAÇÃO DE ESTOQUE foi salvo e enviado com sucesso para a administradora!"
                 st.rerun()
 
-    # MODO 3: FECHAMENTO DO DIA (SOBRAS SEM FOTO + MAQUININHA COM FOTO + DINHEIRO)
+    # 3. FECHAMENTO DO DIA (COM clear_on_submit=True)
     elif flow_mode == "fechamento":
         st.markdown("### 🌙 3. Fechamento Final do Dia")
         st.caption("Registre o que sobrou no final do dia (sem foto do estoque) e as informações financeiras.")
         
-        with st.form("form_fechamento"):
+        with st.form("form_fechamento", clear_on_submit=True):
             st.markdown("#### 📦 1. Sobras de Estoque")
             form_data, notes_data = {}, {}
             for product in PRODUCTS:
@@ -419,7 +430,7 @@ def staff_screen(client: Client, profile: dict):
                 fin_photos = {"card": card_photo}
                 fin_notes = {"card": card_note, "cash": cash_note}
                 save_form_data(client, profile, "fechamento", form_data, None, notes_data, gen_note, fin_data, fin_photos, fin_notes)
-                st.success("Fechamento final enviado com sucesso!")
+                st.session_state.form_success_msg = "✅ Seu FECHAMENTO FINAL foi salvo e enviado com sucesso para a administradora!"
                 st.rerun()
 
 
@@ -532,7 +543,6 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
     else:
         df["dt_object"] = pd.Series(dtype="datetime64[ns, America/Sao_Paulo]")
 
-    # 3 Visões no Painel do Administrador
     tab_abertura, tab_meio_dia, tab_fechamento, tab_history, tab_reports = st.tabs([
         "☀️ 1. Aberturas do Dia", 
         "🔄 2. Acompanhamento (Meio do Dia)", 
@@ -544,7 +554,7 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
     with tab_abertura:
         st.markdown("### ☀️ Registros de Abertura do Dia (Início)")
         if not df.empty:
-            df_ab = df[df["notes"].str.contains("ABERTURA", na=False)]
+            df_ab = df[~df["product"].str.contains("FECHAMENTO", na=False)]
             if not df_ab.empty:
                 for store in stores:
                     sid = str(store["id"])
@@ -567,30 +577,37 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
     with tab_meio_dia:
         st.markdown("### 🔄 Contagens Enviadas Durante o Dia")
         if not df.empty:
-            df_md = df[df["notes"].str.contains("ACOMPANHAMENTO", na=False)]
+            df_md = df[~df["product"].str.contains("FECHAMENTO", na=False)]
             if not df_md.empty:
                 st.dataframe(
                     df_md[["Data e Hora", "Loja", "Funcionária", "product", "quantity_remaining", "notes"]].rename(columns={
-                        "product": "Produto", "quantity_remaining": "Quantidade", "notes": "Observação do Envio"
+                        "product": "Produto", "quantity_remaining": "Quantidade", "notes": "Observação"
                     }),
                     use_container_width=True, hide_index=True
                 )
             else:
-                st.info("Nenhuma contagem de meio de dia enviada hoje.")
+                st.info("Nenhuma contagem enviada durante o dia.")
 
     with tab_fechamento:
         st.markdown("### 🌙 Fechamento Final das Lojas")
         if not df.empty:
-            df_fc = df[df["notes"].str.contains("FECHAMENTO", na=False)]
+            df_fc = df[df["product"].str.contains("FECHAMENTO", na=False)]
             if not df_fc.empty:
                 for store in stores:
                     sid = str(store["id"])
                     st_fc = df_fc[df_fc["store_id"] == sid]
                     if not st_fc.empty:
-                        last_fc = st_fc.sort_values("created_at").groupby("product").last().reset_index()
                         st.markdown(f"#### 🏪 {display_names[sid]} (Resp: **{staff_by_store[sid]}**)")
-                        for _, r in last_fc.iterrows():
-                            st.write(f"• **{r['product']}**: Sobraram **{int(r['quantity_remaining'])} un.** | {r['notes']}")
+                        for _, r in st_fc.iterrows():
+                            if "Maquininha" in r['product'] or "Dinheiro" in r['product']:
+                                st.write(f"• **{r['product']}**: **R$ {r['quantity_remaining']:.2f}** | Observação: {r['notes']}")
+                                if pd.notnull(r.get("photo_path")) and str(r["photo_path"]).strip():
+                                    url = signed_photo_url(client, r["photo_path"])
+                                    if url:
+                                        with st.popover("📷 Ver Foto Comprovante"):
+                                            st.image(url, use_container_width=True)
+                            else:
+                                st.write(f"• **{r['product']}**: Sobraram **{int(r['quantity_remaining'])} un.** | Observação: {r['notes']}")
                         st.divider()
             else:
                 st.info("Nenhum fechamento registrado hoje.")
@@ -600,9 +617,9 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
         if not df.empty:
             display_cols = ["Data", "Hora e Minuto", "Loja", "Funcionária", "product", "quantity_remaining", "notes"]
             renamed_df = df[display_cols].rename(columns={
-                "product": "Produto",
-                "quantity_remaining": "Quantidade Restante",
-                "notes": "Observações & Detalhes"
+                "product": "Produto / Item",
+                "quantity_remaining": "Quantidade / Valor (R$)",
+                "notes": "Observação"
             })
             st.dataframe(renamed_df, use_container_width=True, hide_index=True)
             
@@ -615,9 +632,11 @@ def _load_and_render_admin_content(client, display_store_name, known_store_label
             )
 
     with tab_reports:
-        st.markdown("### Visão por Produto")
+        st.markdown("### Visão Geral de Estoque por Produto")
         if not df.empty:
-            st.bar_chart(df.groupby("product")["quantity_remaining"].sum())
+            df_prod_only = df[~df["product"].str.contains("FECHAMENTO", na=False)]
+            if not df_prod_only.empty:
+                st.bar_chart(df_prod_only.groupby("product")["quantity_remaining"].sum())
 
 
 def main():
